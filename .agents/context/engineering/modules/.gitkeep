@@ -1,0 +1,3 @@
+This folder is intentionally empty for now.
+
+Populate it with one document per code area or subsystem as the codebase grows (e.g. `readiness-engine.md`, `availability-api.md`). No forced subfolder taxonomy yet — let a natural grouping emerge from real content before imposing one. Each document added here needs the standard frontmatter (see ../../meta/frontmatter-schema.md) so it shows up in ../../README.md via `knowledge-toc`.
