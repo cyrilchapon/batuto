@@ -8,15 +8,10 @@
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "packages/config/*"
   ],
   "scripts": {
-    "build": "turbo run build",
-    "build:declaration": "turbo run build:declaration",
-    "dev": "turbo run dev",
-    "test": "turbo run test",
-    "check": "turbo run check:type //#check:lint //#check:format //#check:assist //#check:unused //#check:depsync",
-    "check:type": "turbo run check:type",
     "check:lint": "biome lint .",
     "check:format": "biome format .",
     "check:assist": "biome check --formatter-enabled=false --linter-enabled=false --assist-enabled=true .",

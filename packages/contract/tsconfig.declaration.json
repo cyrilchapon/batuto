@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.declaration.json",
+  "extends": "@batuto/config-typescript/declaration.json",
   "compilerOptions": {
     "outDir": "dist-types",
     "rootDir": "src"

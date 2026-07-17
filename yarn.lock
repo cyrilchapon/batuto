@@ -375,6 +375,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@batuto/api@workspace:apps/api"
   dependencies:
+    "@batuto/config-typescript": "workspace:*"
     "@batuto/contract": "workspace:*"
     "@batuto/db": "workspace:*"
     "@orpc/openapi": "npm:^1.14.8"
@@ -393,10 +394,17 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@batuto/config-typescript@workspace:*, @batuto/config-typescript@workspace:packages/config/typescript":
+  version: 0.0.0-use.local
+  resolution: "@batuto/config-typescript@workspace:packages/config/typescript"
+  languageName: unknown
+  linkType: soft
+
 "@batuto/contract@workspace:*, @batuto/contract@workspace:packages/contract":
   version: 0.0.0-use.local
   resolution: "@batuto/contract@workspace:packages/contract"
   dependencies:
+    "@batuto/config-typescript": "workspace:*"
     "@batuto/dtos": "workspace:*"
     "@orpc/contract": "npm:^1.14.8"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
@@ -410,6 +418,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@batuto/db@workspace:packages/db"
   dependencies:
+    "@batuto/config-typescript": "workspace:*"
     "@prisma/adapter-pg": "npm:^7.8.0"
     "@prisma/client": "npm:^7.8.0"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
@@ -423,6 +432,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@batuto/dtos@workspace:packages/dtos"
   dependencies:
+    "@batuto/config-typescript": "workspace:*"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     typescript: "npm:^5.9.3"
     vitest: "npm:^3.2.4"

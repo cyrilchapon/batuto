@@ -1,0 +1,45 @@
+name: Checks
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+
+jobs:
+  checks:
+    name: Checks (type, lint, format, assist, unused, depsync)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Typecheck
+        run: yarn turbo run check:type
+
+      - name: Lint
+        run: yarn turbo run //#check:lint
+
+      - name: Format
+        run: yarn turbo run //#check:format
+
+      - name: Assist
+        run: yarn turbo run //#check:assist
+
+      - name: Unused code and dependencies
+        run: yarn turbo run //#check:unused
+
+      - name: Dependency version sync
+        run: yarn turbo run //#check:depsync

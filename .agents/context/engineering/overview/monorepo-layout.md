@@ -33,6 +33,10 @@ Getting this graph right early matters: without it, CI can pass locally (where a
 
 Prisma schema + generated client, its own shared package, backed by Postgres (Neon, pooled connection string — see `infra-and-envs.md`).
 
+## `packages/config/` — shared tool config, not the dependency chain
+
+Separate from the DTOs → contract → (backend, frontend) chain above: `packages/config/` holds workspace packages that exist purely to be *extended* by other packages' own tool configs (`packages/config/typescript` today, `@batuto/config-typescript`). These are real workspace packages with a `package.json` and `workspace:*` dependents, not files sitting at the repo root — see `quality-gates.md` for why, and for the pattern to follow if another shared tool config is ever needed.
+
 ## Each shared package builds JS and declarations separately
 
 `packages/dtos`, `packages/contract`, and `packages/db` each expose three pure scripts — `check:type` (typecheck only), `build` (JS only, to `dist/`), `build:declaration` (declarations only, to `dist-types/`) — wired through `turbo.json` so a consumer's `check:type` waits on its dependencies' `build:declaration`, and a package's `build` waits on its dependencies' `build`. `apps/api` and `apps/web` don't follow this split — they're leaf apps, nothing depends on them. See `quality-gates.md` for the full mechanics (including why `tsgo`, and the `--noCheck`/`rewriteRelativeImportExtensions` details).

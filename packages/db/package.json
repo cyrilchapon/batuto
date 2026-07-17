@@ -25,6 +25,7 @@
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
+    "@batuto/config-typescript": "workspace:*",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "prisma": "^7.8.0",
     "typescript": "^5.9.3"

@@ -15,7 +15,19 @@
       "persistent": true
     },
     "check:type": {
-      "dependsOn": ["^build:declaration"]
+      "dependsOn": ["^build:declaration", "build:declaration"]
+    },
+    "@batuto/db#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "src/generated/**"]
+    },
+    "@batuto/db#build:declaration": {
+      "dependsOn": ["^build:declaration"],
+      "outputs": ["dist-types/**", "src/generated/**"]
+    },
+    "@batuto/web#check:type": {
+      "dependsOn": ["^build:declaration", "build:declaration"],
+      "outputs": [".react-router/**"]
     },
     "test": {
       "dependsOn": ["^build"]
