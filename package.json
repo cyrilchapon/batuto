@@ -1,5 +1,6 @@
 {
   "name": "batuto",
+  "version": "0.0.0",
   "private": true,
   "packageManager": "yarn@4.17.1",
   "engines": {
@@ -11,19 +12,28 @@
   ],
   "scripts": {
     "build": "turbo run build",
+    "build:declaration": "turbo run build:declaration",
     "dev": "turbo run dev",
-    "lint": "biome lint .",
-    "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
-    "check": "biome check ."
+    "check": "turbo run check:type //#check:lint //#check:format //#check:assist //#check:unused //#check:depsync",
+    "check:type": "turbo run check:type",
+    "check:lint": "biome lint .",
+    "check:format": "biome format .",
+    "check:assist": "biome check --formatter-enabled=false --linter-enabled=false --assist-enabled=true .",
+    "check:unused": "knip",
+    "check:depsync": "syncpack lint",
+    "fix": "yarn fix:format && yarn fix:assist && yarn fix:lint && yarn fix:depsync && yarn fix:unused",
+    "fix:lint": "biome lint --write --unsafe .",
+    "fix:format": "biome format --write .",
+    "fix:assist": "biome check --formatter-enabled=false --linter-enabled=false --assist-enabled=true --write --unsafe .",
+    "fix:unused": "knip --fix --allow-remove-files",
+    "fix:depsync": "syncpack fix"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",
     "@types/node": "^26.1.1",
-    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
-    "tsx": "^4.23.1",
+    "knip": "^6.27.0",
+    "syncpack": "^15.3.2",
     "turbo": "^2.5.8",
     "typescript": "^5.9.3"
   }

@@ -4,13 +4,17 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist-types/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist-types/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:type": "tsgo -p tsconfig.json --noEmit",
+    "build": "tsgo -p tsconfig.build.json",
+    "build:declaration": "tsgo -p tsconfig.declaration.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -19,6 +23,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }

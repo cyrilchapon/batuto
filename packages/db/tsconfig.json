@@ -1,9 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true,
-    "skipLibCheck": true,
-    "allowImportingTsExtensions": true
+    "noEmit": true
   },
-  "include": ["prisma.config.ts", "src/**/*.ts", "generated/prisma/**/*.ts"]
+  "include": ["prisma.config.ts", "src"]
 }

@@ -12,6 +12,7 @@ node_modules/
 
 # build outputs
 dist/
+dist-types/
 build/
 .turbo/
 
@@ -21,7 +22,7 @@ build/
 !.env.example
 
 # prisma
-packages/db/generated/
+packages/db/src/generated/
 
 # editors / os
 .DS_Store

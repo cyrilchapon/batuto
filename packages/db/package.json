@@ -3,14 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist-types/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist-types/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
-    "build": "prisma generate",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:type": "tsgo -p tsconfig.json --noEmit",
+    "build": "prisma generate && tsgo -p tsconfig.build.json",
+    "build:declaration": "prisma generate && tsgo -p tsconfig.declaration.json",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio"
@@ -18,11 +22,10 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "dotenv": "^17.4.2",
-    "pg": "^8.22.0"
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@types/pg": "^8.20.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "prisma": "^7.8.0",
     "typescript": "^5.9.3"
   }

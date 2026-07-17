@@ -7,7 +7,30 @@ on:
     branches: [main]
 
 jobs:
-  ci:
+  checks:
+    name: Checks (type, lint, format, assist, unused, depsync)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run checks
+        run: yarn check
+
+  build-and-test:
+    name: Build and test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -44,12 +67,6 @@ jobs:
 
       - name: Apply database migrations
         run: yarn workspace @batuto/db migrate:deploy
-
-      - name: Lint & format check
-        run: yarn check
-
-      - name: Typecheck
-        run: yarn typecheck
 
       - name: Build
         run: yarn build

@@ -2,10 +2,11 @@
 title: Tech stack overview
 summary: Turborepo/Yarn monorepo, React+Vite frontend, Express+oRPC backend, Prisma/Postgres, Clerk, Doppler, Betterstack — full detail lives in Linear
 category: engineering
-last_updated: 2026-07-15
+last_updated: 2026-07-17
 related:
   - engineering/overview/monorepo-layout.md
   - engineering/overview/infra-and-envs.md
+  - engineering/overview/quality-gates.md
 ---
 
 # Tech stack overview
@@ -32,7 +33,7 @@ Bare Node.js + Express, oRPC bindings. Fully decoupled from the frontend — no 
 
 ## Tooling
 
-Biome for linting and formatting across the whole monorepo — one tool, one config, replacing an ESLint + Prettier combo.
+Biome for linting and formatting across the whole monorepo — one tool, one config, replacing an ESLint + Prettier combo. Typechecking uses `tsgo` (TypeScript 7 native preview), not `tsc`. Knip for unused code/dependencies, Syncpack for cross-package dependency version consistency. All six checks (`check:type`/`check:lint`/`check:format`/`check:assist`/`check:unused`/`check:depsync`) and their `fix:*` counterparts are documented in `quality-gates.md` — that's the "how to check after working" / "how to fix" reference.
 
 ## Auth
 

@@ -8,6 +8,6 @@ const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
 const link = new OpenAPILink(contract, { url: apiUrl });
 
-export const client: ContractRouterClient<typeof contract> = createORPCClient(link);
+const client: ContractRouterClient<typeof contract> = createORPCClient(link);
 
 export const orpc = createORPCReactQueryUtils(client);

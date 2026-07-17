@@ -2,9 +2,10 @@
 title: Monorepo layout
 summary: DTOs → contract → (backend, frontend) is a real dependency chain in Turborepo, not a flat set of packages
 category: engineering
-last_updated: 2026-07-15
+last_updated: 2026-07-17
 related:
   - engineering/overview/stack.md
+  - engineering/overview/quality-gates.md
 ---
 
 # Monorepo layout
@@ -31,3 +32,7 @@ Getting this graph right early matters: without it, CI can pass locally (where a
 ## Database package
 
 Prisma schema + generated client, its own shared package, backed by Postgres (Neon, pooled connection string — see `infra-and-envs.md`).
+
+## Each shared package builds JS and declarations separately
+
+`packages/dtos`, `packages/contract`, and `packages/db` each expose three pure scripts — `check:type` (typecheck only), `build` (JS only, to `dist/`), `build:declaration` (declarations only, to `dist-types/`) — wired through `turbo.json` so a consumer's `check:type` waits on its dependencies' `build:declaration`, and a package's `build` waits on its dependencies' `build`. `apps/api` and `apps/web` don't follow this split — they're leaf apps, nothing depends on them. See `quality-gates.md` for the full mechanics (including why `tsgo`, and the `--noCheck`/`rewriteRelativeImportExtensions` details).
