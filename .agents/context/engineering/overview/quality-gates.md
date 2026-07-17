@@ -84,23 +84,31 @@ Two standard tasks, declared once at the top level of `turbo.json` (not per-pack
 - **`codegen`** — for generators that produce real runtime code (possibly bundled with types, like Prisma's). `packages/db` is the only package that defines it today: `"codegen": "prisma generate"`.
 - **`codegen:declaration`** — for generators that produce types only, nothing runtime. `apps/web` is the only package that defines it today: `"codegen:declaration": "react-router typegen"`.
 
-`build`, `build:declaration`, and `check:type` all `dependsOn` **both** `codegen` and `codegen:declaration` on the *same* package (no `^`, deliberately — see below). Most packages define neither script, and that's fine: Turborepo treats a `dependsOn` reference to a task a package's `package.json` doesn't define as a no-op, the same way `apps/api`'s missing `build`/`build:declaration` scripts already don't break anything that depends on `^build`. `packages/db` only needs `codegen` (Prisma has no lighter, types-only generation mode — one `prisma generate` call produces everything), and `apps/web` only needs `codegen:declaration`; depending on both unconditionally means neither package's `turbo.json` entry needs a special case, and a future package that needs *both* kinds of generation just works without any `turbo.json` change.
+Every dependency edge below is only added where a task genuinely reads something the upstream task produces — nothing is wired "just in case" (see the no-`^codegen` note below for what that ruled out).
 
 ### `dependsOn` wiring (`turbo.json`)
 
 ```
-codegen             dependsOn ^codegen                                              (propagates to consumers, e.g. if a dep's codegen fed another dep's codegen)
-codegen:declaration dependsOn ^codegen:declaration
-check:type          dependsOn ^build:declaration, build:declaration, codegen, codegen:declaration   (deps' types AND its own codegen — see below)
-build                dependsOn ^build, codegen, codegen:declaration                  (JS-only, --noCheck, doesn't strictly need deps' types)
-build:declaration    dependsOn ^build:declaration, codegen, codegen:declaration      (needs deps' types to resolve its own)
-test                 dependsOn ^build                                                (runtime imports, no type resolution needed)
-dev                  dependsOn ^build                                                (tsx/vite resolve workspace deps via their compiled dist/)
+codegen             (no dependsOn)
+codegen:declaration (no dependsOn)
+build                dependsOn ^build, codegen                        (JS-only, --noCheck — no type resolution, so no codegen:declaration, no ^build:declaration)
+build:declaration    dependsOn ^build:declaration, codegen             (compiles the same real source build does, just emits .d.ts — needs the same own-package codegen, not codegen:declaration)
+check:type           dependsOn ^build:declaration, codegen, codegen:declaration   (deps' types, plus both flavors of its own package's generated source)
+test                 dependsOn ^build                                  (runtime imports, no type resolution needed)
+dev                  dependsOn ^build                                  (tsx/vite resolve workspace deps via their compiled dist/)
 ```
 
-Note `check:type`'s **same-package** `build:declaration`/`codegen`/`codegen:declaration` dependencies (no `^`, unlike most of that list): a package with no workspace dependencies at all (like `packages/db`) still needs *its own* codegen to have run before it can typecheck itself — `^build:declaration` alone only covers *dependencies*, never the package's own tasks. The missing `build:declaration` self-edge was a real, initially-masked bug: it only surfaced once `packages/db/src/generated` was deleted and rebuilt from a genuinely clean state, because leftover artifacts from an earlier run had been silently satisfying the missing edge.
+Three things worth calling out, because each one looks plausible until you check what actually reads what:
+
+- **`codegen`/`codegen:declaration` don't `dependsOn` their `^` (cross-package) counterpart.** No package's generator currently reads another workspace package's generated output — `prisma generate` reads `schema.prisma`, `react-router typegen` reads `apps/web`'s own route files. A `^codegen` edge here would be a no-op today for every package, added purely on spec. Add it back if and when a real package needs it (most likely pattern: a codegen step consuming a dependency's *build* output, e.g. an OpenAPI client generated from a built contract — which would be a dependency on `^build`, not `^codegen`, anyway).
+- **`build` doesn't `dependsOn` `codegen:declaration`.** `codegen:declaration` produces *types only* (`apps/web`'s `.react-router/types`) — irrelevant to a `--noCheck` JS emission that never resolves types in the first place. Same reasoning that already keeps `build` off `^build:declaration`.
+- **`check:type` doesn't `dependsOn` its own-package `build:declaration`.** This used to be there (see `check:type`'s history below) purely to force `packages/db`'s inlined `prisma generate` to run before typechecking — a side effect of a design that's since been replaced by the `codegen` task itself. Now that `check:type` depends on own-package `codegen`/`codegen:declaration` directly, depending on `build:declaration` too would just force an irrelevant `dist-types/` emission before every typecheck for no reason `check:type` actually needs.
+
+The `^build:declaration` edge on `check:type` is unchanged and still real: typechecking a package that imports `@batuto/contract` needs `@batuto/contract`'s `dist-types/index.d.ts` to exist, because `package.json`'s `types` field points there, not at source. That's a *dependency's* build:declaration — the caret matters. The historical bug this entire split was built to catch (a package with no workspace dependencies, like `packages/db`, still needing *its own* codegen to run before it can typecheck itself, because `^build:declaration` alone only ever covers dependencies) is now fixed by the direct `codegen`/`codegen:declaration` same-package edges on `check:type`, not by a same-package `build:declaration` edge.
 
 The four "global" checks (`check:lint`, `check:format`, `check:assist`, `check:unused`, `check:depsync`) are registered in `turbo.json` as **root tasks** (`//#check:lint` etc.) — Turborepo's mechanism for a task that only ever runs once, against the root `package.json`'s own script, never fanning out per-workspace. `turbo run <taskname>` does **not** automatically pick these up; they have to be referenced explicitly with the `//#` prefix.
+
+`//#check:unused` (Knip) is the one root task with a real cross-package dependency: it scans `apps/web`'s source, which imports React Router's generated route types (`./+types/...`), so it needs those files on disk first. It `dependsOn` `@batuto/web#codegen:declaration` directly — not `@batuto/web#check:type` — because what Knip needs is the generated file existing, not web's typecheck having passed; coupling it to `check:type` would mean an unrelated type error in `apps/web` blocks Knip from running at all, which has nothing to do with what Knip actually checks.
 
 ### Env vars: `envMode: "loose"` + hashing `.env*` as a global dependency, not `passThroughEnv`
 

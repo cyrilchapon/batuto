@@ -4,19 +4,17 @@
   "globalDependencies": ["**/.env*"],
   "tasks": {
     "codegen": {
-      "dependsOn": ["^codegen"],
       "outputs": ["src/generated/**"]
     },
     "codegen:declaration": {
-      "dependsOn": ["^codegen:declaration"],
       "outputs": [".react-router/**"]
     },
     "build": {
-      "dependsOn": ["^build", "codegen", "codegen:declaration"],
+      "dependsOn": ["^build", "codegen"],
       "outputs": ["dist/**", ".react-router/**", "build/**"]
     },
     "build:declaration": {
-      "dependsOn": ["^build:declaration", "codegen", "codegen:declaration"],
+      "dependsOn": ["^build:declaration", "codegen"],
       "outputs": ["dist-types/**"]
     },
     "dev": {
@@ -25,7 +23,7 @@
       "persistent": true
     },
     "check:type": {
-      "dependsOn": ["^build:declaration", "build:declaration", "codegen", "codegen:declaration"]
+      "dependsOn": ["^build:declaration", "codegen", "codegen:declaration"]
     },
     "test": {
       "dependsOn": ["^build"]
@@ -40,7 +38,7 @@
       "outputs": []
     },
     "//#check:unused": {
-      "dependsOn": ["@batuto/web#check:type"],
+      "dependsOn": ["@batuto/web#codegen:declaration"],
       "outputs": []
     },
     "//#check:depsync": {
