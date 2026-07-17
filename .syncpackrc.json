@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/syncpack/schema.json",
+  "versionGroups": [
+    {
+      "label": "Internal packages must use the workspace protocol",
+      "dependencies": ["@batuto/**"],
+      "dependencyTypes": ["prod", "dev"],
+      "pinVersion": "workspace:*"
+    }
+  ],
+  "semverGroups": [
+    {
+      "label": "Everything else uses caret ranges",
+      "range": "^"
+    }
+  ]
+}

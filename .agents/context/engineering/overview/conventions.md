@@ -2,9 +2,10 @@
 title: Engineering conventions
 summary: Language rule (French for issues/chat, English everywhere else) and where domain-vs-permission logic must stay separated in code
 category: engineering
-last_updated: 2026-07-15
+last_updated: 2026-07-17
 related:
   - domain/role-hierarchy.md
+  - engineering/overview/quality-gates.md
 ---
 
 # Engineering conventions
@@ -17,7 +18,7 @@ related:
 
 ## Tooling
 
-Biome for linting and formatting, monorepo-wide — a single tool and config, not a Prettier+ESLint split. Don't introduce a second formatter/linter for a sub-package "just this once."
+Biome for linting and formatting, monorepo-wide — a single tool and config, not a Prettier+ESLint split. Don't introduce a second formatter/linter for a sub-package "just this once." Before finishing any non-trivial change, run the relevant `check:*` scripts (and `yarn fix` for anything auto-fixable) — see `quality-gates.md` for what each `check:*`/`fix:*` script does, why there's no single aggregate `check` command, and why checks are invoked via `turbo` directly rather than a yarn wrapper.
 
 ## Domain logic vs. generic permissions — do not conflate
 

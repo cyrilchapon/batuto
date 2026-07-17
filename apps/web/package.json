@@ -1,0 +1,45 @@
+{
+  "name": "@batuto/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "start": "react-router-serve ./build/server/index.js",
+    "check:type": "tsgo -p tsconfig.json --noEmit",
+    "codegen:declaration": "react-router typegen"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "@batuto/contract": "workspace:*",
+    "@fontsource-variable/geist": "^5.2.9",
+    "@orpc/client": "^1.14.8",
+    "@orpc/contract": "^1.14.8",
+    "@orpc/openapi-client": "^1.14.8",
+    "@orpc/react-query": "^1.14.8",
+    "@react-router/node": "^8.0.0",
+    "@react-router/serve": "^8.0.0",
+    "@tanstack/react-query": "^5.101.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "isbot": "^5.1.36",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router": "^8.0.0",
+    "shadcn": "^4.13.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^8.0.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.3"
+  }
+}

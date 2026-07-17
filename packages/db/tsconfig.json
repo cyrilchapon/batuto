@@ -1,0 +1,7 @@
+{
+  "extends": "@batuto/config-typescript/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["prisma.config.ts", "src"]
+}

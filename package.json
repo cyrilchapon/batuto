@@ -1,0 +1,34 @@
+{
+  "name": "batuto",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "yarn@4.17.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "packages/config/*"
+  ],
+  "scripts": {
+    "check:lint": "biome lint .",
+    "check:format": "biome format .",
+    "check:assist": "biome check --formatter-enabled=false --linter-enabled=false --assist-enabled=true .",
+    "check:unused": "knip",
+    "check:depsync": "syncpack lint",
+    "fix:lint": "biome lint --write --unsafe .",
+    "fix:format": "biome format --write .",
+    "fix:assist": "biome check --formatter-enabled=false --linter-enabled=false --assist-enabled=true --write --unsafe .",
+    "fix:unused": "knip --fix --allow-remove-files",
+    "fix:depsync": "syncpack fix"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.4",
+    "@types/node": "^26.1.1",
+    "knip": "^6.27.0",
+    "syncpack": "^15.3.2",
+    "turbo": "^2.5.8",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "envMode": "loose",
+  "globalDependencies": ["**/.env*"],
+  "tasks": {
+    "codegen": {
+      "outputs": ["src/generated/**"]
+    },
+    "codegen:declaration": {
+      "outputs": [".react-router/**"]
+    },
+    "build": {
+      "dependsOn": ["^build", "codegen"],
+      "outputs": ["dist/**", ".react-router/**", "build/**"]
+    },
+    "build:declaration": {
+      "dependsOn": ["^build:declaration", "codegen"],
+      "outputs": ["dist-types/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "check:type": {
+      "dependsOn": ["^build:declaration", "codegen", "codegen:declaration"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "//#check:lint": {
+      "outputs": []
+    },
+    "//#check:format": {
+      "outputs": []
+    },
+    "//#check:assist": {
+      "outputs": []
+    },
+    "//#check:unused": {
+      "dependsOn": ["@batuto/web#codegen:declaration"],
+      "outputs": []
+    },
+    "//#check:depsync": {
+      "outputs": []
+    }
+  }
+}

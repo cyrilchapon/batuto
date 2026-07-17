@@ -1,0 +1,16 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Placeholder model, proves the migration + client generation pipeline
+// end-to-end. Real domain models come later (see .agents/context/domain/).
+model HelloWorld {
+  id        String   @id @default(cuid())
+  message   String
+  createdAt DateTime @default(now())
+}

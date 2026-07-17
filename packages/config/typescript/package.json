@@ -1,0 +1,10 @@
+{
+  "name": "@batuto/config-typescript",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./base.json": "./base.json",
+    "./build.json": "./build.json",
+    "./declaration.json": "./declaration.json"
+  }
+}
