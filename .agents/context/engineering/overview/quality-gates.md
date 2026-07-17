@@ -6,6 +6,7 @@ last_updated: 2026-07-17
 related:
   - engineering/overview/monorepo-layout.md
   - engineering/overview/stack.md
+  - engineering/overview/infra-and-envs.md
 ---
 
 # Quality gates — check:/fix: scripts
@@ -88,9 +89,15 @@ Note `check:type`'s **same-package** `build:declaration` dependency (no `^`, unl
 
 The four "global" checks (`check:lint`, `check:format`, `check:assist`, `check:unused`, `check:depsync`) are registered in `turbo.json` as **root tasks** (`//#check:lint` etc.) — Turborepo's mechanism for a task that only ever runs once, against the root `package.json`'s own script, never fanning out per-workspace. `turbo run <taskname>` does **not** automatically pick these up; they have to be referenced explicitly with the `//#` prefix.
 
-### Turbo's strict env mode strips env vars that aren't declared
+### Env vars: `envMode: "loose"` + hashing `.env*` as a global dependency, not `passThroughEnv`
 
-By default Turborepo runs tasks in **strict env mode**: a task's subprocess only sees a filtered baseline environment, not whatever the invoking shell happened to have exported — even a var set at the GitHub Actions job level. `DATABASE_URL` and `WEB_URL` are declared via `passThroughEnv` on the `test` and `dev` tasks in `turbo.json` for exactly this reason. This stayed invisible for a long time locally because every package had its own gitignored `.env` file — `dotenv` reads those directly off disk, so nothing depended on the var surviving turbo's env filtering. CI has no `.env` files, only the job-level `env:` block, so the gap only showed up there: `apps/api`'s test failed with a Postgres SASL auth error (`client password must be a string`) because `process.env.DATABASE_URL` was genuinely `undefined` inside the `vitest` subprocess despite being set on the job. If a new task ever needs an env var it isn't currently getting, add it to that task's `passThroughEnv` — don't assume "it's set in the workflow file" is enough.
+Turborepo defaults to **strict env mode**: a task's subprocess only sees a filtered baseline environment, not whatever the invoking shell (or a GitHub Actions job's `env:` block) exported. The obvious fix — enumerating every var a task needs under that task's `passThroughEnv` in `turbo.json` — doesn't scale once the app has dozens of env vars (Clerk, Betterstack, Neon, etc. once wired), so this repo doesn't use it.
+
+Instead, root `turbo.json` sets `"envMode": "loose"` (every var the process inherits reaches every task, no enumeration, ever) paired with `"globalDependencies": ["**/.env*"]` (any `.env*` file's *content*, anywhere in the repo, is hashed into every task's cache key). This restores the cache-correctness that loose mode alone gives up: a changed secret still busts the cache, just via file hashing instead of a maintained var allowlist. The `**/` prefix is required — `globalDependencies` globs are resolved from the repo root, not per-package, and a bare `.env*` pattern does **not** reach nested files like `apps/api/.env` (verified empirically: editing a nested `.env` left every task's hash unchanged with `.env*`, and changed every task's hash with `**/.env*`). This is deliberately coarse — any `.env*` change busts *every* task's cache, not just the ones that read that var — which is the right trade for "dozens of vars, minimal upkeep" over precise per-var invalidation.
+
+This is why `apps/api`'s test originally failed in CI with a Postgres SASL auth error (`client password must be a string`, `DATABASE_URL` genuinely `undefined` inside the `vitest` subprocess despite being set at the job level) — it stayed invisible locally because every package's gitignored `.env` file made the var available regardless of what turbo was filtering, and CI has no `.env` files to fall back on.
+
+`.env` files are the actual long-term local-dev mechanism here, not a Phase-1 stopgap replaced by `doppler run --` — see `infra-and-envs.md` for the `env:pull` convention (Doppler → `.env` file per runnable package) once Doppler is wired.
 
 ### Cache hits don't replay side effects that aren't declared as `outputs`
 

@@ -2,7 +2,7 @@
 title: Infra and environments
 summary: Doppler is the single secrets source syncing to Heroku/Vercel/CI; provisioned first, before anything that needs a secret
 category: engineering
-last_updated: 2026-07-15
+last_updated: 2026-07-17
 related:
   - engineering/overview/stack.md
 ---
@@ -16,9 +16,17 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 - **Heroku** — Doppler's Heroku integration pushes config vars automatically on change.
 - **Vercel** — Doppler's Vercel integration does the same for frontend env vars.
 - **CI (GitHub Actions)** — pulls secrets via a Doppler service token, not duplicated into GitHub Secrets.
-- **Local dev** — `doppler run -- <command>` injects env vars directly; no committed `.env` files.
+- **Local dev** — each runnable package (`apps/api`, `apps/web`, `packages/db`) has its own dedicated Doppler project and an `env:pull` script that writes a real, gitignored `.env` file on disk:
+
+  ```json
+  "env:pull": "doppler secrets download --project=THE_PROJECT --config=dev_personal --no-file --format=env > .env"
+  ```
+
+  This is not `doppler run -- <command>` wrapping every invocation — the `.env` file is the actual local-dev mechanism (read by `dotenv`, hashed into Turborepo's cache key per `quality-gates.md`'s env-vars section). `.env` files are gitignored, never committed, but they do exist on disk between `env:pull` runs. One dedicated Doppler project per runnable package (not shared) keeps each package's secrets scoped to what it actually needs.
 
 **Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, Betterstack tokens — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
+
+The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
 
 ## Environment structure
 

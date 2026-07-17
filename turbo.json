@@ -1,5 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "envMode": "loose",
+  "globalDependencies": ["**/.env*"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -12,8 +14,7 @@
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["DATABASE_URL", "WEB_URL", "PORT"]
+      "persistent": true
     },
     "check:type": {
       "dependsOn": ["^build:declaration", "build:declaration"]
@@ -31,8 +32,7 @@
       "outputs": [".react-router/**"]
     },
     "test": {
-      "dependsOn": ["^build"],
-      "passThroughEnv": ["DATABASE_URL", "WEB_URL"]
+      "dependsOn": ["^build"]
     },
     "//#check:lint": {
       "outputs": []
