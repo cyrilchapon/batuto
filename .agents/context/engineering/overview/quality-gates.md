@@ -11,7 +11,7 @@ related:
 
 # Quality gates — check:/fix: scripts
 
-Every quality check in this repo follows one naming convention: `check:<thing>` is always pure (never writes to disk), and `fix:<thing>` is its mutative counterpart where one exists. There is no `fix:type` — there's nothing a tool can auto-fix about a type error. Checks are deliberately **not** bundled behind a single aggregate command (no `yarn check`) — run the one(s) relevant to what you're doing, individually.
+Every quality check in this repo follows one naming convention: `check:<thing>` is always pure (never writes to disk), and `fix:<thing>` is its mutative counterpart where one exists. There is no `fix:type` — there's nothing a tool can auto-fix about a type error. Checks and fixes are deliberately **not** bundled behind aggregate commands (no `yarn check`, no `yarn fix`) — run the one(s) relevant to what you're doing, individually.
 
 ## turbo-first: invoke turbo directly, don't wrap it in yarn aliases
 
@@ -22,7 +22,7 @@ Concretely:
 - Root `package.json` only holds **atomic** scripts — the actual tool invocations (`"check:lint": "biome lint ."`, `"check:unused": "knip"`, etc.) that `turbo.json`'s root tasks (`//#check:lint`, `//#check:unused`, ...) reference. It does **not** hold `"build": "turbo run build"`-style pass-throughs.
 - To run anything that benefits from turbo's dependency graph, parallelism, or cache — `check:type`, `build`, `build:declaration`, `test`, `dev`, or any of the root-only checks — invoke turbo directly: `yarn turbo run <task>` (Yarn resolves `turbo` as a workspace-installed binary; this is not a proxy script, it's running the real CLI). CI does exactly this — see the workflow files below.
 - `turbo run <taskname>` does **not** automatically pick up a root-only task — those are registered as `//#<taskname>` in `turbo.json` and must be referenced with that exact `//#` prefix (e.g. `yarn turbo run //#check:lint`), never bare.
-- The only scripts that legitimately chain multiple `yarn` commands are the `fix:*` convenience ones (`fix`, dev-only, never used by turbo or CI) — those aren't proxying to turbo, so the rule above doesn't apply to them.
+- No script chains multiple other scripts either — same reasoning as the no-aggregate-`check`/`fix` rule below: run the atomic one(s) relevant to what you're doing.
 
 This exists specifically so automation (CI first, but also any future scripting) gets turbo's caching for free instead of silently bypassing it through a yarn indirection layer.
 
@@ -41,7 +41,7 @@ Run the ones relevant to what changed. `yarn turbo run check:type //#check:lint 
 
 ## How to fix
 
-`yarn fix` runs every fixable check's `fix:` variant in a safe order (format → assist → lint → depsync → unused — code style settles before Knip's `--fix` potentially removes files/exports, so the resulting diff is clean). Individual variants: `fix:lint`, `fix:format`, `fix:assist`, `fix:unused`, `fix:depsync`.
+Run the `fix:` variant for whatever you just found broken: `fix:lint`, `fix:format`, `fix:assist`, `fix:unused`, `fix:depsync`. When running more than one by hand, format → assist → lint → depsync → unused is a sensible order (code style settles before Knip's `--fix` potentially removes files/exports), but there's no script that chains them for you.
 
 `fix:lint` and `fix:assist` pass Biome's `--unsafe` flag — real auto-fixes, not just the safe subset, since these are developer-triggered and expected to be reviewed via `git diff` before committing. `fix:unused` passes Knip's `--allow-remove-files`, meaning it can delete files it considers fully unused — always review its diff, don't blindly trust it in a script.
 
