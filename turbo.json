@@ -12,7 +12,8 @@
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": ["DATABASE_URL", "WEB_URL", "PORT"]
     },
     "check:type": {
       "dependsOn": ["^build:declaration", "build:declaration"]
@@ -30,7 +31,8 @@
       "outputs": [".react-router/**"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["DATABASE_URL", "WEB_URL"]
     },
     "//#check:lint": {
       "outputs": []
