@@ -30,7 +30,9 @@ The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler prov
 
 ## Environment structure
 
-Decide dev/staging/prod vs. just dev/prod as one of the very first bootstrap decisions — don't leave it implicit and let it calcify around whatever the first deploy happened to need.
+**Decided: dev/prod, not dev/staging/prod** (BAT-4). Two environments, matching the project's actual scale — a solo-maintained, single-band-at-launch app on a three-week bootstrap runway. `dev` is today's default/trunk branch and deploys to the dev environment; `main` is reserved for a future production branch and will deploy to prod once it exists (see `quality-gates.md`'s CI section for where the branch triggers will need to move). Staging can be added later if a real need shows up — it isn't blocked by this choice, just not provisioned speculatively now.
+
+Each runnable package's dedicated Doppler project (see below) carries two configs: `dev` (with a `dev_personal` branch per developer, per Doppler's own convention) and `prd`. Project naming follows the package name: `batuto-api`, `batuto-web`, `batuto-db`.
 
 ## Hosting targets
 
