@@ -13,8 +13,9 @@
   },
   "scripts": {
     "check:type": "tsgo -p tsconfig.json --noEmit",
-    "build": "prisma generate && tsgo -p tsconfig.build.json",
-    "build:declaration": "prisma generate && tsgo -p tsconfig.declaration.json",
+    "codegen": "prisma generate",
+    "build": "tsgo -p tsconfig.build.json",
+    "build:declaration": "tsgo -p tsconfig.declaration.json",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio"

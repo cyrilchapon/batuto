@@ -75,17 +75,30 @@ Each dependency-package exposes three pure, non-overlapping scripts:
 
 A package's `package.json` points `main` at `./dist/index.js` and `types` at `./dist-types/index.d.ts` (both under `exports`, plus a flat top-level fallback for older tooling). Each package's own `tsconfig.build.json`/`tsconfig.declaration.json` extends `@batuto/config-typescript`'s matching partial and only adds `outDir`/`rootDir`.
 
+## `codegen` / `codegen:declaration` — code generation is never a side effect of another task
+
+Some packages need a code-generation step before anything else can run against them: `packages/db`'s `prisma generate` (writes real runtime code *and* types to `src/generated`) and `apps/web`'s `react-router typegen` (writes types only, to `.react-router/types`, nothing runtime). These are their own tasks, never inlined into `check:type`, `build`, or `build:declaration` — every one of those has to stay pure (no side effects, `check:type` above all: a typecheck that silently writes files on disk is not a typecheck you can trust).
+
+Two standard tasks, declared once at the top level of `turbo.json` (not per-package overrides) so any current or future package picks them up automatically just by defining the matching script:
+
+- **`codegen`** — for generators that produce real runtime code (possibly bundled with types, like Prisma's). `packages/db` is the only package that defines it today: `"codegen": "prisma generate"`.
+- **`codegen:declaration`** — for generators that produce types only, nothing runtime. `apps/web` is the only package that defines it today: `"codegen:declaration": "react-router typegen"`.
+
+`build`, `build:declaration`, and `check:type` all `dependsOn` **both** `codegen` and `codegen:declaration` on the *same* package (no `^`, deliberately — see below). Most packages define neither script, and that's fine: Turborepo treats a `dependsOn` reference to a task a package's `package.json` doesn't define as a no-op, the same way `apps/api`'s missing `build`/`build:declaration` scripts already don't break anything that depends on `^build`. `packages/db` only needs `codegen` (Prisma has no lighter, types-only generation mode — one `prisma generate` call produces everything), and `apps/web` only needs `codegen:declaration`; depending on both unconditionally means neither package's `turbo.json` entry needs a special case, and a future package that needs *both* kinds of generation just works without any `turbo.json` change.
+
 ### `dependsOn` wiring (`turbo.json`)
 
 ```
-check:type        dependsOn ^build:declaration, build:declaration   (deps' types AND its own — see below)
-build              dependsOn ^build                                  (JS-only, --noCheck, doesn't strictly need deps' types)
-build:declaration  dependsOn ^build:declaration                      (needs deps' types to resolve its own)
-test               dependsOn ^build                                  (runtime imports, no type resolution needed)
-dev                dependsOn ^build                                  (tsx/vite resolve workspace deps via their compiled dist/)
+codegen             dependsOn ^codegen                                              (propagates to consumers, e.g. if a dep's codegen fed another dep's codegen)
+codegen:declaration dependsOn ^codegen:declaration
+check:type          dependsOn ^build:declaration, build:declaration, codegen, codegen:declaration   (deps' types AND its own codegen — see below)
+build                dependsOn ^build, codegen, codegen:declaration                  (JS-only, --noCheck, doesn't strictly need deps' types)
+build:declaration    dependsOn ^build:declaration, codegen, codegen:declaration      (needs deps' types to resolve its own)
+test                 dependsOn ^build                                                (runtime imports, no type resolution needed)
+dev                  dependsOn ^build                                                (tsx/vite resolve workspace deps via their compiled dist/)
 ```
 
-Note `check:type`'s **same-package** `build:declaration` dependency (no `^`, unlike everything else in that list): a package with no workspace dependencies at all (like `packages/db`) still needs *its own* codegen to have run before it can typecheck itself — `^build:declaration` alone only covers *dependencies*, never the package's own tasks. This was a real, initially-masked bug: it only surfaced once `packages/db/src/generated` was deleted and rebuilt from a genuinely clean state, because leftover artifacts from an earlier run had been silently satisfying the missing edge.
+Note `check:type`'s **same-package** `build:declaration`/`codegen`/`codegen:declaration` dependencies (no `^`, unlike most of that list): a package with no workspace dependencies at all (like `packages/db`) still needs *its own* codegen to have run before it can typecheck itself — `^build:declaration` alone only covers *dependencies*, never the package's own tasks. The missing `build:declaration` self-edge was a real, initially-masked bug: it only surfaced once `packages/db/src/generated` was deleted and rebuilt from a genuinely clean state, because leftover artifacts from an earlier run had been silently satisfying the missing edge.
 
 The four "global" checks (`check:lint`, `check:format`, `check:assist`, `check:unused`, `check:depsync`) are registered in `turbo.json` as **root tasks** (`//#check:lint` etc.) — Turborepo's mechanism for a task that only ever runs once, against the root `package.json`'s own script, never fanning out per-workspace. `turbo run <taskname>` does **not** automatically pick these up; they have to be referenced explicitly with the `//#` prefix.
 
@@ -101,13 +114,13 @@ This is why `apps/api`'s test originally failed in CI with a Postgres SASL auth 
 
 ### Cache hits don't replay side effects that aren't declared as `outputs`
 
-A subtler version of the same bug: `prisma generate` (writes `packages/db/src/generated`) and `react-router typegen` (writes `apps/web/.react-router/types`) are side effects of running a task for real. On a turbo **cache hit**, the task's command never actually re-executes — only its declared `outputs` get restored to disk, and its logs get replayed. If a directory a downstream task's compiler needs to read isn't declared as an output, a cache hit silently leaves it missing (or stale) even though the log replay makes it look like everything succeeded.
+`prisma generate` (writes `packages/db/src/generated`) and `react-router typegen` (writes `apps/web/.react-router/types`) are side effects of running a task for real. On a turbo **cache hit**, the task's command never actually re-executes — only its declared `outputs` get restored to disk, and its logs get replayed. If a directory a downstream task's compiler needs to read isn't declared as an output, a cache hit silently leaves it missing (or stale) even though the log replay makes it look like everything succeeded.
 
-Fixed by giving the affected tasks package-specific output overrides in `turbo.json` (`@batuto/db#build`, `@batuto/db#build:declaration`, `@batuto/web#check:type`) that include the codegen directory alongside the "real" output (`dist/`, `dist-types/`, `.react-router/**`). Anything that later depends on these tasks — even transitively, even when the dependency itself is a cache hit — gets the codegen directory correctly restored first.
+This is precisely why `codegen`/`codegen:declaration` are their own tasks rather than a step glued onto `build`/`build:declaration`/`check:type`: each declares its own `outputs` (`codegen` → `src/generated/**`, `codegen:declaration` → `.react-router/**`), so a cache hit on `codegen` correctly restores `packages/db/src/generated` on disk *before* anything that depends on it runs — no output ever has to be smuggled into an unrelated task's `outputs` list. (An earlier version of this setup did exactly that — package-specific overrides on `@batuto/db#build`, `@batuto/db#build:declaration`, and `@batuto/web#check:type` — before the codegen split existed; those overrides are gone now, made unnecessary by giving the side effect its own tracked task.)
 
 ### `packages/db` is not a special case
 
-Prisma's generator writes into `packages/db/src/generated` (not a sibling folder outside `src/`), and a small barrel (`packages/db/src/index.ts`) re-exports it. This means the generated client compiles through the exact same `build`/`build:declaration` pipeline as hand-authored source — no special-casing needed in the scripts themselves (only the `outputs` override noted above). `build`/`build:declaration` both start with `prisma generate` (idempotent, cheap) before compiling, so the generated client is always fresh whenever the task actually executes.
+Prisma's generator writes into `packages/db/src/generated` (not a sibling folder outside `src/`), and a small barrel (`packages/db/src/index.ts`) re-exports it. This means the generated client compiles through the exact same `build`/`build:declaration` pipeline as hand-authored source — no special-casing needed in the scripts themselves, since `build`/`build:declaration` `dependsOn` the package's own `codegen` task and never call `prisma generate` directly.
 
 One gotcha this setup required: Prisma's generated files author their own cross-references with a literal `.ts` extension (`import ... from "./enums.ts"`). Emitting that verbatim into `dist/*.js` breaks at runtime (Node/tsx would look for a `.ts` file that no longer exists next to the compiled `.js`). Fixed with `"rewriteRelativeImportExtensions": true` in `@batuto/config-typescript`'s `base.json` — tsgo rewrites `.ts`/`.tsx` extensions in relative imports to their JS equivalent in JS output. Declaration (`.d.ts`) output still contains the literal `.ts` extensions, but that's fine and expected: TypeScript's own resolver understands `.ts`-suffixed specifiers inside `.d.ts` files as referring to the sibling declaration file, so cross-package type resolution works correctly regardless.
 

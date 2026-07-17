@@ -7,7 +7,8 @@
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "check:type": "react-router typegen && tsgo -p tsconfig.json --noEmit"
+    "check:type": "tsgo -p tsconfig.json --noEmit",
+    "codegen:declaration": "react-router typegen"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

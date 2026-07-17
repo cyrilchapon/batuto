@@ -3,12 +3,20 @@
   "envMode": "loose",
   "globalDependencies": ["**/.env*"],
   "tasks": {
+    "codegen": {
+      "dependsOn": ["^codegen"],
+      "outputs": ["src/generated/**"]
+    },
+    "codegen:declaration": {
+      "dependsOn": ["^codegen:declaration"],
+      "outputs": [".react-router/**"]
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "codegen", "codegen:declaration"],
       "outputs": ["dist/**", ".react-router/**", "build/**"]
     },
     "build:declaration": {
-      "dependsOn": ["^build:declaration"],
+      "dependsOn": ["^build:declaration", "codegen", "codegen:declaration"],
       "outputs": ["dist-types/**"]
     },
     "dev": {
@@ -17,19 +25,7 @@
       "persistent": true
     },
     "check:type": {
-      "dependsOn": ["^build:declaration", "build:declaration"]
-    },
-    "@batuto/db#build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**", "src/generated/**"]
-    },
-    "@batuto/db#build:declaration": {
-      "dependsOn": ["^build:declaration"],
-      "outputs": ["dist-types/**", "src/generated/**"]
-    },
-    "@batuto/web#check:type": {
-      "dependsOn": ["^build:declaration", "build:declaration"],
-      "outputs": [".react-router/**"]
+      "dependsOn": ["^build:declaration", "build:declaration", "codegen", "codegen:declaration"]
     },
     "test": {
       "dependsOn": ["^build"]
