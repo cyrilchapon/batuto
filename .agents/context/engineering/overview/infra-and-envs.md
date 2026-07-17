@@ -24,6 +24,8 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 
   This is not `doppler run -- <command>` wrapping every invocation — the `.env` file is the actual local-dev mechanism (read by `dotenv`, hashed into Turborepo's cache key per `quality-gates.md`'s env-vars section). `.env` files are gitignored, never committed, but they do exist on disk between `env:pull` runs. One dedicated Doppler project per runnable package (not shared) keeps each package's secrets scoped to what it actually needs.
 
+  `apps/api` and `packages/db` load a second, higher-priority file on top: `.env.local`. Unlike `.env`, `.env.local` is never written by `env:pull` — it exists specifically to hold the personal Neon branch connection string from `db:branch` (see below), which must survive repeated `env:pull` runs and must not collide across parallel worktrees/sessions the way a shared Doppler config value would. See "Neon database branching (local dev)" for the mechanism.
+
 **Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, Betterstack tokens — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
 
 The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
@@ -41,6 +43,19 @@ Each runnable package's dedicated Doppler project (see below) carries two config
 - **Database** — Neon (Postgres). Use the **pooled** connection string for the Heroku backend (a long-lived Express process making frequent short queries is exactly the case the pooler is built for), not the direct one.
 
 Three deploy targets, one CI pipeline, secrets from one place (Doppler) — confirm both Vercel and Heroku deploys are actually wired through GitHub Actions / Vercel's integration, and that neither duplicates secrets by hand outside Doppler.
+
+## Neon database branching (local dev)
+
+Local dev against the database can go two ways, in priority order:
+
+1. **A personal Neon branch** (preferred) — `yarn workspace @batuto/db db:branch` calls the Neon API to create-or-reuse a branch named `local/<current-git-branch>`, forked from the project's primary branch, and writes its pooled connection string as `DATABASE_URL` into `.env.local` in both `packages/db` and `apps/api`. Re-running it is idempotent (reuses the existing branch for that git branch name instead of creating a duplicate). Because `.env.local` lives on disk per-directory and is never touched by `env:pull`, each worktree or parallel Claude Code session gets its own isolated branch with no risk of collision — this is exactly why the connection string is **not** stored in Doppler's `dev_personal` config: that config is a single shared value, unsafe for multiple concurrent sessions with different lifecycles.
+2. **The local Postgres fallback** — `DATABASE_URL` in Doppler's `dev`/`dev_personal` config for `batuto-db`/`batuto-api`, pointing at a local Postgres instance (from BAT-4). Used automatically whenever no `.env.local` exists yet.
+
+Both `packages/db/prisma.config.ts` and `apps/api/src/index.ts` load env vars via `dotenv`'s `config({ path: [".env.local", ".env"] })` — dotenv's documented "first value wins" rule means `.env.local`'s `DATABASE_URL`, when present, overrides `.env`'s. `apps/web` needs no equivalent wiring: Vite already treats `.env.local` as highest-priority and gitignored by default.
+
+The Neon project backing this (`batuto-db`'s Doppler `dev` config) also carries `NEON_API_KEY` (an org key scoped to just this Neon project), `NEON_PROJECT_ID`, and `BASE_DATABASE_URL` (the shared/primary branch's own pooled connection string — the parent every `local/*` branch forks from, and the one thing CI keeps in sync on push to `dev`, once that's wired).
+
+**Still open, deliberately out of scope for now:** keeping the shared dev Neon branch in sync with what's pushed to `dev` (running `prisma migrate deploy` against it in CI), and ephemeral per-PR Neon branches for CI test runs. The latter is planned via Neon's own GitHub integration rather than a hand-rolled create/delete-branch CI step.
 
 ## Background jobs
 

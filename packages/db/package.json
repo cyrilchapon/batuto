@@ -13,6 +13,7 @@
   },
   "scripts": {
     "env:pull": "doppler secrets download --project=batuto-db --config=dev_personal --no-file --format=env > .env",
+    "db:branch": "node scripts/db-branch.mjs",
     "check:type": "tsgo -p tsconfig.json --noEmit",
     "codegen": "prisma generate",
     "build": "tsgo -p tsconfig.build.json",

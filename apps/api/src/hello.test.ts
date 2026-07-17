@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: [".env.local", ".env"] });
+
 import { db } from "@batuto/db";
 import request from "supertest";
 import { afterAll, describe, expect, it } from "vitest";
