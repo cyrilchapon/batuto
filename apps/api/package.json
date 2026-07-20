@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "env:pull": "doppler secrets download --project=batuto-api --config=dev_personal --no-file --format=env > .env",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "check:type": "tsgo -p tsconfig.json --noEmit",
