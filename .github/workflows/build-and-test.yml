@@ -42,6 +42,14 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-api
+          doppler-config: dev
+
       - name: Apply database migrations
         run: yarn workspace @batuto/db migrate:deploy
 
@@ -50,3 +58,6 @@ jobs:
 
       - name: Test
         run: yarn turbo run test
+        env:
+          CLERK_SECRET_KEY: ${{ steps.doppler.outputs.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ steps.doppler.outputs.CLERK_PUBLISHABLE_KEY }}
