@@ -382,8 +382,10 @@ __metadata:
     "@batuto/env": "workspace:*"
     "@orpc/openapi": "npm:^1.14.8"
     "@orpc/server": "npm:^1.14.8"
+    "@orpc/standard-server-node": "npm:^1.14.8"
     "@types/cors": "npm:^2.8.19"
     "@types/express": "npm:^5.0.6"
+    "@types/node": "npm:^26.1.1"
     "@types/supertest": "npm:^7.2.1"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     cors: "npm:^2.8.6"
@@ -402,10 +404,9 @@ __metadata:
   resolution: "@batuto/auth@workspace:packages/auth"
   dependencies:
     "@batuto/config-typescript": "workspace:*"
-    "@clerk/express": "npm:^2.1.43"
-    "@types/express": "npm:^5.0.6"
+    "@clerk/backend": "npm:^3.11.7"
+    "@types/node": "npm:^26.1.1"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
-    express: "npm:^5.2.1"
     typescript: "npm:^5.9.3"
     zod: "npm:^4.1.13"
   languageName: unknown
@@ -606,19 +607,6 @@ __metadata:
     standardwebhooks: "npm:^1.0.0"
     tslib: "npm:2.8.1"
   checksum: 10c0/9ccc02e057c024e640c6fa0596e7be1489676f36ef8b5b37fd61ecdd88111947567592d6846335fd9cf4341e24fe388dff58a9dd7e36ff7228c8cb2830315a61
-  languageName: node
-  linkType: hard
-
-"@clerk/express@npm:^2.1.43":
-  version: 2.1.43
-  resolution: "@clerk/express@npm:2.1.43"
-  dependencies:
-    "@clerk/backend": "npm:^3.11.7"
-    "@clerk/shared": "npm:^4.25.5"
-    tslib: "npm:2.8.1"
-  peerDependencies:
-    express: ^4.17.0 || ^5.0.0
-  checksum: 10c0/4cf7e6908dfbfa1f13b58c4f8da6801f3879856520047842db7c0528ed5112194badfdcb64b3d4bbeba60a9ad20630c0dfdefc1eb2acb74bc7b16aa3678c6aaf
   languageName: node
   linkType: hard
 
@@ -1306,7 +1294,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@orpc/standard-server-node@npm:1.14.8":
+"@orpc/standard-server-node@npm:1.14.8, @orpc/standard-server-node@npm:^1.14.8":
   version: 1.14.8
   resolution: "@orpc/standard-server-node@npm:1.14.8"
   dependencies:

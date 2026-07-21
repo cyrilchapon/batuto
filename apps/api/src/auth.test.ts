@@ -9,6 +9,6 @@ describe("GET /private/ping", () => {
     const response = await request(app).get("/private/ping");
 
     expect(response.status).toBe(401);
-    expect(response.body).toEqual({ error: "Unauthorized" });
+    expect(response.body).toMatchObject({ code: "UNAUTHORIZED" });
   });
 });

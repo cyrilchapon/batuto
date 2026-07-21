@@ -1,3 +1,3 @@
-export { getAuth } from "@clerk/express";
+export * from "./authenticate.js";
+export * from "./client.js";
 export * from "./env.js";
-export * from "./middleware.js";
