@@ -1,0 +1,145 @@
+name: Database checks
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+
+jobs:
+  check-schema:
+    name: check:schema (migration history vs schema.prisma)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-db
+          doppler-config: dev
+
+      - name: Parse shadow project's database/role
+        id: shadow-parent
+        env:
+          BASE_SHADOW_DATABASE_URL: ${{ steps.doppler.outputs.BASE_SHADOW_DATABASE_URL }}
+        run: |
+          node -e '
+            const u = new URL(process.env.BASE_SHADOW_DATABASE_URL);
+            console.log("database=" + u.pathname.replace(/^\//, ""));
+            console.log("role=" + decodeURIComponent(u.username));
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Compute branch expiry
+        id: expiry
+        run: echo "at=$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # Forked from BASE_SHADOW_DATABASE_URL's branch, which must stay
+      # structurally empty (no tables) — Prisma requires the shadow database
+      # to be empty so it can replay the full migration history into it from
+      # scratch. See infra-and-envs.md's "Neon database branching" section.
+      - name: Create ephemeral shadow branch
+        id: create-branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ steps.doppler.outputs.NEON_SHADOW_PROJECT_ID }}
+          api_key: ${{ steps.doppler.outputs.NEON_SHADOW_API_KEY }}
+          branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          database: ${{ steps.shadow-parent.outputs.database }}
+          role: ${{ steps.shadow-parent.outputs.role }}
+          expires_at: ${{ steps.expiry.outputs.at }}
+
+      - name: check:schema
+        run: yarn workspace @batuto/db check:schema
+        env:
+          SHADOW_DATABASE_URL: ${{ steps.create-branch.outputs.db_url_pooled }}
+
+      - name: Delete ephemeral shadow branch
+        if: ${{ always() && steps.create-branch.outputs.branch_id != '' }}
+        uses: neondatabase/delete-branch-action@v1
+        with:
+          project_id: ${{ steps.doppler.outputs.NEON_SHADOW_PROJECT_ID }}
+          branch_id: ${{ steps.create-branch.outputs.branch_id }}
+          api_key: ${{ steps.doppler.outputs.NEON_SHADOW_API_KEY }}
+
+  check-migrations:
+    name: check:migrations (deploy against a dev clone)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-db
+          doppler-config: dev
+
+      - name: Parse dev database/role
+        id: dev-parent
+        env:
+          BASE_DATABASE_URL: ${{ steps.doppler.outputs.BASE_DATABASE_URL }}
+        run: |
+          node -e '
+            const u = new URL(process.env.BASE_DATABASE_URL);
+            console.log("database=" + u.pathname.replace(/^\//, ""));
+            console.log("role=" + decodeURIComponent(u.username));
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Compute branch expiry
+        id: expiry
+        run: echo "at=$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # A real, data-bearing clone of the shared dev branch — this is what
+      # catches migrations that are syntactically fine but fail against
+      # existing rows (e.g. a NOT NULL column with no default).
+      - name: Create ephemeral dev clone
+        id: create-branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ steps.doppler.outputs.NEON_PROJECT_ID }}
+          api_key: ${{ steps.doppler.outputs.NEON_API_KEY }}
+          branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          database: ${{ steps.dev-parent.outputs.database }}
+          role: ${{ steps.dev-parent.outputs.role }}
+          expires_at: ${{ steps.expiry.outputs.at }}
+
+      - name: Apply new migrations
+        run: yarn workspace @batuto/db migrate:deploy
+        env:
+          DATABASE_URL: ${{ steps.create-branch.outputs.db_url_pooled }}
+
+      - name: Delete ephemeral dev clone
+        if: ${{ always() && steps.create-branch.outputs.branch_id != '' }}
+        uses: neondatabase/delete-branch-action@v1
+        with:
+          project_id: ${{ steps.doppler.outputs.NEON_PROJECT_ID }}
+          branch_id: ${{ steps.create-branch.outputs.branch_id }}
+          api_key: ${{ steps.doppler.outputs.NEON_API_KEY }}

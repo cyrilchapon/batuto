@@ -20,6 +20,7 @@
     "build:declaration": "tsgo -p tsconfig.declaration.json",
     "migrate:dev": "dotenv -e .env.local -e .env -- prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "check:schema": "prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code",
     "studio": "dotenv -e .env.local -e .env -- prisma studio"
   },
   "dependencies": {

@@ -2,7 +2,7 @@
 title: "Quality gates — check:/fix: scripts"
 summary: check:type (tsgo), check:lint/format/assist (Biome), check:unused (Knip), check:depsync (Syncpack) — how to check after working, how to fix what's found, and why every invocation goes through turbo directly
 category: engineering
-last_updated: 2026-07-17
+last_updated: 2026-07-21
 related:
   - engineering/overview/monorepo-layout.md
   - engineering/overview/stack.md
@@ -140,10 +140,10 @@ When either tool flags something, resist the urge to reflexively add an ignore �
 
 ## CI
 
-Two separate workflow files, not two jobs in one file: `.github/workflows/checks.yml` (no database needed, one step per check, fast) and `.github/workflows/build-and-test.yml` (needs the Postgres service container, runs `prisma migrate deploy` then `build` then `test`). Split this way so the fast static checks don't wait on — or get blocked by — database setup, and each check's pass/fail is independently visible in the PR checks list rather than buried inside one combined job.
+Three separate workflow files, not three jobs in one file: `.github/workflows/checks.yml` (no database needed, one step per check, fast), `.github/workflows/build-and-test.yml` (needs the local Postgres service container, runs `prisma migrate deploy` then `build` then `test`), and `.github/workflows/db-checks.yml` (`check:schema`/`check:migrations`, each against its own ephemeral Neon branch — see `infra-and-envs.md`'s "CI database checks" section). Split this way so the fast static checks don't wait on — or get blocked by — database setup, and each check's pass/fail is independently visible in the PR checks list rather than buried inside one combined job.
 
-Both trigger on PRs and pushes targeting `dev` — the current default/trunk branch. `main` doesn't exist yet; it's reserved for a future production branch. Re-point these triggers at `main` (or add it alongside `dev`) once that branch exists and takes over as the deploy target — see `infra-and-envs.md`/Doppler environment structure for when that's likely to happen.
+All three trigger on PRs and pushes targeting `dev` — the current default/trunk branch. `main` doesn't exist yet; it's reserved for a future production branch. Re-point these triggers at `main` (or add it alongside `dev`) once that branch exists and takes over as the deploy target — see `infra-and-envs.md`/Doppler environment structure for when that's likely to happen.
 
 **`actions/setup-node`'s `cache: yarn` input is incompatible with a Corepack-pinned Yarn version and must not be used.** `setup-node` resolves the yarn cache directory *during its own step*, before any later `corepack enable` step gets a chance to run — so it always shells out to whatever `yarn` happens to be on the runner's default PATH (classic Yarn 1.x), which immediately errors on a repo pinning `packageManager: "yarn@4.x"` via Corepack. The fix isn't step-reordering (moving `corepack enable` earlier doesn't reliably survive `setup-node` prepending Node 22's own toolcache bin dir to `PATH`, which can re-shadow the shim) — it's dropping `cache: yarn` entirely and just not caching the yarn install for now. Order stays `checkout` → `setup-node` (no `cache` input) → `corepack enable` → `yarn install --immutable`.
 
-Every step in both workflows invokes `turbo` directly (`yarn turbo run <task>` or `yarn workspace <pkg> <script>` for the one-off, non-turbo `migrate:deploy` step) — never a root `package.json` alias — per the turbo-first rule above.
+Every step in all three workflows invokes `turbo` directly (`yarn turbo run <task>`) or `yarn workspace <pkg> <script>` for one-off, non-turbo scripts (`migrate:deploy`, `check:schema`) — never a root `package.json` alias — per the turbo-first rule above. `check:schema`/`check:migrations` aren't turbo tasks: they depend on live, non-deterministic external state (an ephemeral Neon branch created fresh each run), which turbo's caching model has nothing meaningful to offer.
