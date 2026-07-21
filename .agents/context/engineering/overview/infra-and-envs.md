@@ -5,6 +5,7 @@ category: engineering
 last_updated: 2026-07-21
 related:
   - engineering/overview/stack.md
+  - engineering/modules/auth.md
 ---
 
 # Infra and environments
@@ -29,6 +30,8 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 **Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, Betterstack tokens — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
 
 The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
+
+**Still open:** no real Clerk application exists yet, so `batuto-api`'s `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY` aren't set in any of its three configs (`dev`, `dev_personal`, `prd`) despite `apps/api` now reading them (BAT-12, see [auth.md](../modules/auth.md)). Creating the Clerk application is a manual step in Clerk's own dashboard, no CLI/API path exists for it. Blocks the frontend Clerk wiring (BAT-17, needs the same publishable key) and the hello-world round-trip proof (BAT-23, needs a real authenticated user) until done.
 
 ## Environment structure
 

@@ -11,6 +11,7 @@
     "test": "dotenv -e .env.local -e .env -- vitest run"
   },
   "dependencies": {
+    "@batuto/auth": "workspace:*",
     "@batuto/contract": "workspace:*",
     "@batuto/db": "workspace:*",
     "@batuto/env": "workspace:*",

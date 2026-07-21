@@ -1,3 +1,4 @@
+import { createAuthMiddleware, getAuth, requireAuthenticated } from "@batuto/auth";
 import { OpenAPIHandler } from "@orpc/openapi/node";
 import cors from "cors";
 import express from "express";
@@ -9,9 +10,15 @@ export function createApp() {
   const handler = new OpenAPIHandler(router);
 
   app.use(cors({ origin: appEnv.WEB_URL }));
+  app.use(createAuthMiddleware(appEnv));
 
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.get("/private/ping", requireAuthenticated, (req, res) => {
+    const { userId } = getAuth(req);
+    res.json({ userId });
   });
 
   app.use(async (req, res, next) => {
