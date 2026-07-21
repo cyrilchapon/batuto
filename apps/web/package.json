@@ -6,8 +6,8 @@
   "scripts": {
     "env:pull": "doppler secrets download --project=batuto-web --config=dev_personal --no-file --format=env > .env",
     "build": "react-router build",
-    "dev": "react-router dev",
-    "start": "react-router-serve ./build/server/index.js",
+    "dev": "dotenv -e .env.local -e .env -- react-router dev",
+    "start": "dotenv -e .env.local -e .env -- react-router-serve ./build/server/index.js",
     "check:type": "tsgo -p tsconfig.json --noEmit",
     "codegen:declaration": "react-router typegen"
   },
@@ -15,6 +15,7 @@
     "@base-ui/react": "^1.6.0",
     "@batuto/contract": "workspace:*",
     "@batuto/env": "workspace:*",
+    "@clerk/react-router": "^3.5.12",
     "@fontsource-variable/geist": "^5.2.9",
     "@orpc/client": "^1.14.8",
     "@orpc/contract": "^1.14.8",
@@ -41,6 +42,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "dotenv-cli": "^11.0.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "vite": "^8.0.3"

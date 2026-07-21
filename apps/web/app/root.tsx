@@ -1,3 +1,5 @@
+import { ClerkProvider } from "@clerk/react-router";
+import { clerkMiddleware, rootAuthLoader } from "@clerk/react-router/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import {
@@ -11,6 +13,19 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { appEnv } from "./env.js";
+import { serverEnv } from "./env.server.js";
+
+export const middleware: Route.MiddlewareFunction[] = [
+  clerkMiddleware({
+    publishableKey: appEnv.VITE_CLERK_PUBLISHABLE_KEY,
+    secretKey: serverEnv.CLERK_SECRET_KEY,
+  }),
+];
+
+export async function loader(args: Route.LoaderArgs) {
+  return rootAuthLoader(args);
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -43,13 +58,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
+export default function App({ loaderData }: Route.ComponentProps) {
   const [queryClient] = useState(() => new QueryClient());
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Outlet />
-    </QueryClientProvider>
+    <ClerkProvider loaderData={loaderData} publishableKey={appEnv.VITE_CLERK_PUBLISHABLE_KEY}>
+      <QueryClientProvider client={queryClient}>
+        <Outlet />
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
 

@@ -478,6 +478,7 @@ __metadata:
     "@base-ui/react": "npm:^1.6.0"
     "@batuto/contract": "workspace:*"
     "@batuto/env": "workspace:*"
+    "@clerk/react-router": "npm:^3.5.12"
     "@fontsource-variable/geist": "npm:^5.2.9"
     "@orpc/client": "npm:^1.14.8"
     "@orpc/contract": "npm:^1.14.8"
@@ -494,6 +495,7 @@ __metadata:
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
+    dotenv-cli: "npm:^11.0.0"
     isbot: "npm:^5.1.36"
     react: "npm:^19.2.7"
     react-dom: "npm:^19.2.7"
@@ -607,6 +609,36 @@ __metadata:
     standardwebhooks: "npm:^1.0.0"
     tslib: "npm:2.8.1"
   checksum: 10c0/9ccc02e057c024e640c6fa0596e7be1489676f36ef8b5b37fd61ecdd88111947567592d6846335fd9cf4341e24fe388dff58a9dd7e36ff7228c8cb2830315a61
+  languageName: node
+  linkType: hard
+
+"@clerk/react-router@npm:^3.5.12":
+  version: 3.5.12
+  resolution: "@clerk/react-router@npm:3.5.12"
+  dependencies:
+    "@clerk/backend": "npm:^3.11.7"
+    "@clerk/react": "npm:^6.12.5"
+    "@clerk/shared": "npm:^4.25.5"
+    cookie: "npm:1.0.2"
+    tslib: "npm:2.8.1"
+  peerDependencies:
+    react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-router: ^7.9.0 || ^8.0.0
+  checksum: 10c0/45d2e5640ebb3faa6e53d2dbca6c6e97e8277b38268e28ead0ff6d20dff5ec511ee616a6d7d8a707853949191b9462f4df0fc72b639550d12f0c0eca21acb8a8
+  languageName: node
+  linkType: hard
+
+"@clerk/react@npm:^6.12.5":
+  version: 6.12.5
+  resolution: "@clerk/react@npm:6.12.5"
+  dependencies:
+    "@clerk/shared": "npm:^4.25.5"
+    tslib: "npm:2.8.1"
+  peerDependencies:
+    react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+  checksum: 10c0/95b057e43c5935c6d391aabbfe56cb98aaf88d5f788674de47819f19ef8edfdea90d07e33005d4680e01b5a80122fd3867ae8109b15bda9c3873d088fece2167
   languageName: node
   linkType: hard
 
@@ -3526,6 +3558,13 @@ __metadata:
   version: 1.2.2
   resolution: "cookie-signature@npm:1.2.2"
   checksum: 10c0/54e05df1a293b3ce81589b27dddc445f462f6fa6812147c033350cd3561a42bc14481674e05ed14c7bd0ce1e8bb3dc0e40851bad75415733711294ddce0b7bc6
+  languageName: node
+  linkType: hard
+
+"cookie@npm:1.0.2":
+  version: 1.0.2
+  resolution: "cookie@npm:1.0.2"
+  checksum: 10c0/fd25fe79e8fbcfcaf6aa61cd081c55d144eeeba755206c058682257cb38c4bd6795c6620de3f064c740695bb65b7949ebb1db7a95e4636efb8357a335ad3f54b
   languageName: node
   linkType: hard
 
