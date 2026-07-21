@@ -30,8 +30,10 @@ related:
 
 ## Frontend is a separate concern
 
-`apps/web` will use Clerk's React SDK (`@clerk/clerk-react` or similar), not this package — `@batuto/auth` wraps the Express-specific backend SDK only, the same way `@batuto/db` has no frontend counterpart. `CLERK_PUBLISHABLE_KEY` is not secret and will need to reach the frontend too, but through its own Vite env var (`VITE_CLERK_PUBLISHABLE_KEY`), not by importing this package.
+`apps/web` will use Clerk's React SDK (`@clerk/clerk-react` or similar), not this package — `@batuto/auth` wraps the Express-specific backend SDK only, the same way `@batuto/db` has no frontend counterpart. `CLERK_PUBLISHABLE_KEY` is not secret and reaches the frontend too, but through its own Vite env var (`VITE_CLERK_PUBLISHABLE_KEY`), not by importing this package. `batuto-web`'s Doppler `dev`/`dev_personal` configs already carry `VITE_CLERK_PUBLISHABLE_KEY`, prepared ahead of the actual frontend wiring (BAT-17).
 
-## Still open
+## Real Clerk application — resolved for dev
 
-No real Clerk application exists yet. Doppler's `batuto-api` project (all three configs — `dev`, `dev_personal`, `prd`) has no `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY` secrets set. Creating the Clerk application via Clerk's own dashboard and populating those two secrets into Doppler is a manual step — no Clerk CLI/API access was available to do this from an agent session. This blocks the frontend wiring (uses the same publishable key) and the "hello world round trip" full-stack proof (needs a real authenticated user) from being fully functional end-to-end.
+A real Clerk application exists (test-mode keys). `batuto-api`'s `dev`/`dev_personal` Doppler configs carry `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY`; `batuto-web`'s `dev`/`dev_personal` carry the matching `VITE_CLERK_PUBLISHABLE_KEY`. Verified working: `apps/api/src/auth.test.ts` passes against the real keys (pulled via `env:pull`), confirming `/private/ping` genuinely 401s an unauthenticated request end-to-end, not just against a placeholder.
+
+**Still open:** `prd` configs (both `batuto-api` and `batuto-web`) are still empty — no Clerk Production instance/live keys yet. That's expected to stay open until there's an actual production deploy to point it at (see `infra-and-envs.md`'s environment structure), not a bootstrap blocker.

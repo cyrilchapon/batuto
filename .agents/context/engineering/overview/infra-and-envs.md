@@ -31,7 +31,7 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 
 The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
 
-**Still open:** no real Clerk application exists yet, so `batuto-api`'s `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY` aren't set in any of its three configs (`dev`, `dev_personal`, `prd`) despite `apps/api` now reading them (BAT-12, see [auth.md](../modules/auth.md)). Creating the Clerk application is a manual step in Clerk's own dashboard, no CLI/API path exists for it. Blocks the frontend Clerk wiring (BAT-17, needs the same publishable key) and the hello-world round-trip proof (BAT-23, needs a real authenticated user) until done.
+A real Clerk application exists (test-mode keys). `batuto-api`'s `dev`/`dev_personal` configs carry `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY`, and `batuto-web`'s `dev`/`dev_personal` carry the matching `VITE_CLERK_PUBLISHABLE_KEY`, ahead of the frontend wiring (BAT-17) actually consuming it — see [auth.md](../modules/auth.md). `prd` configs on both projects are still empty; that's expected until a real production deploy exists, not a bootstrap blocker.
 
 ## Environment structure
 
