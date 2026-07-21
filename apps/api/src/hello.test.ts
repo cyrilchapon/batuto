@@ -1,7 +1,7 @@
-import { db } from "@batuto/db";
 import request from "supertest";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
+import { db } from "./db.js";
 
 const app = createApp();
 

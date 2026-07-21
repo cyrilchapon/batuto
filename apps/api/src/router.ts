@@ -1,6 +1,6 @@
 import { contract } from "@batuto/contract";
-import { db } from "@batuto/db";
 import { implement } from "@orpc/server";
+import { db } from "./db.js";
 
 const os = implement(contract);
 
