@@ -13,23 +13,23 @@
   },
   "scripts": {
     "env:pull": "doppler secrets download --project=batuto-db --config=dev_personal --no-file --format=env > .env",
-    "db:branch": "node scripts/db-branch.mjs",
+    "db:branch": "dotenv -e .env -- node scripts/db-branch.mjs",
     "check:type": "tsgo -p tsconfig.json --noEmit",
     "codegen": "prisma generate",
     "build": "tsgo -p tsconfig.build.json",
     "build:declaration": "tsgo -p tsconfig.declaration.json",
-    "migrate:dev": "prisma migrate dev",
+    "migrate:dev": "dotenv -e .env.local -e .env -- prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "studio": "prisma studio"
+    "studio": "dotenv -e .env.local -e .env -- prisma studio"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
-    "dotenv": "^17.4.2"
+    "@prisma/client": "^7.8.0"
   },
   "devDependencies": {
     "@batuto/config-typescript": "workspace:*",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "dotenv-cli": "^11.0.0",
     "prisma": "^7.8.0",
     "typescript": "^5.9.3"
   }

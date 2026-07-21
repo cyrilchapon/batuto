@@ -4,18 +4,19 @@
 // DATABASE_URL into .env.local in packages/db and apps/api. .env.local is
 // gitignored and never touched by env:pull, so it survives re-runs of
 // env:pull and stays local to whichever worktree/session it was created in.
+//
+// Expects NEON_API_KEY, NEON_PROJECT_ID and BASE_DATABASE_URL to already be
+// in the environment — injected by the `db:branch` package.json script via
+// `dotenv -e .env --`, not loaded here.
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { config as loadEnv } from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbDir = join(__dirname, "..");
 const repoRoot = join(dbDir, "..", "..");
-
-loadEnv({ path: join(dbDir, ".env") });
 
 const { NEON_API_KEY, NEON_PROJECT_ID, BASE_DATABASE_URL } = process.env;
 

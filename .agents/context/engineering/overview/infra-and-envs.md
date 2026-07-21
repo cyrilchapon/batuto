@@ -2,7 +2,7 @@
 title: Infra and environments
 summary: Doppler is the single secrets source syncing to Heroku/Vercel/CI; provisioned first, before anything that needs a secret
 category: engineering
-last_updated: 2026-07-17
+last_updated: 2026-07-21
 related:
   - engineering/overview/stack.md
 ---
@@ -22,7 +22,7 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
   "env:pull": "doppler secrets download --project=THE_PROJECT --config=dev_personal --no-file --format=env > .env"
   ```
 
-  This is not `doppler run -- <command>` wrapping every invocation — the `.env` file is the actual local-dev mechanism (read by `dotenv`, hashed into Turborepo's cache key per `quality-gates.md`'s env-vars section). `.env` files are gitignored, never committed, but they do exist on disk between `env:pull` runs. One dedicated Doppler project per runnable package (not shared) keeps each package's secrets scoped to what it actually needs.
+  This is not `doppler run -- <command>` wrapping every invocation — the `.env` file is the actual local-dev mechanism, injected by `dotenv-cli` (the `dotenv` CLI binary, not the `dotenv` npm package — application code never loads env files itself) wrapping the dev-only package.json scripts that need it, and hashed into Turborepo's cache key per `quality-gates.md`'s env-vars section. `.env` files are gitignored, never committed, but they do exist on disk between `env:pull` runs. One dedicated Doppler project per runnable package (not shared) keeps each package's secrets scoped to what it actually needs.
 
   `apps/api` and `packages/db` load a second, higher-priority file on top: `.env.local`. Unlike `.env`, `.env.local` is never written by `env:pull` — it exists specifically to hold the personal Neon branch connection string from `db:branch` (see below), which must survive repeated `env:pull` runs and must not collide across parallel worktrees/sessions the way a shared Doppler config value would. See "Neon database branching (local dev)" for the mechanism.
 
@@ -51,7 +51,7 @@ Local dev against the database can go two ways, in priority order:
 1. **A personal Neon branch** (preferred) — `yarn workspace @batuto/db db:branch` calls the Neon API to create-or-reuse a branch named `local/<current-git-branch>`, forked from the project's primary branch, and writes its pooled connection string as `DATABASE_URL` into `.env.local` in both `packages/db` and `apps/api`. Re-running it is idempotent (reuses the existing branch for that git branch name instead of creating a duplicate). Because `.env.local` lives on disk per-directory and is never touched by `env:pull`, each worktree or parallel Claude Code session gets its own isolated branch with no risk of collision — this is exactly why the connection string is **not** stored in Doppler's `dev_personal` config: that config is a single shared value, unsafe for multiple concurrent sessions with different lifecycles.
 2. **The local Postgres fallback** — `DATABASE_URL` in Doppler's `dev`/`dev_personal` config for `batuto-db`/`batuto-api`, pointing at a local Postgres instance (from BAT-4). Used automatically whenever no `.env.local` exists yet.
 
-Both `packages/db/prisma.config.ts` and `apps/api/src/index.ts` load env vars via `dotenv`'s `config({ path: [".env.local", ".env"] })` — dotenv's documented "first value wins" rule means `.env.local`'s `DATABASE_URL`, when present, overrides `.env`'s. `apps/web` needs no equivalent wiring: Vite already treats `.env.local` as highest-priority and gitignored by default.
+Dev-only scripts that need `DATABASE_URL` are individually wrapped with `dotenv-cli`: `dotenv -e .env.local -e .env -- <command>` (e.g. `apps/api`'s `dev`/`test`, `packages/db`'s `migrate:dev`/`studio`/`db:branch`). `dotenv-cli`'s documented "first file wins" rule means `.env.local`'s `DATABASE_URL`, when present, overrides `.env`'s; a real env var already set in the process (e.g. by CI) always wins over both, and a missing file is silently skipped rather than erroring — so wrapping is harmless even where the files don't exist. Application code itself never loads env files (no `dotenv` import anywhere) — env vars simply need to already be in `process.env` by the time the process starts. Production/CI-facing scripts (`start`, `migrate:deploy`) are deliberately **not** wrapped, relying on the real deployed/CI environment instead; `codegen` (`prisma generate`) doesn't need `DATABASE_URL` at all, so it isn't wrapped either. `apps/web` needs no equivalent wiring: Vite already treats `.env.local` as highest-priority and gitignored by default.
 
 The Neon project backing this (`batuto-db`'s Doppler `dev` config) also carries `NEON_API_KEY` (an org key scoped to just this Neon project), `NEON_PROJECT_ID`, and `BASE_DATABASE_URL` (the shared/primary branch's own pooled connection string — the parent every `local/*` branch forks from, and the one thing CI keeps in sync on push to `dev`, once that's wired).
 
