@@ -375,14 +375,17 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@batuto/api@workspace:apps/api"
   dependencies:
+    "@batuto/auth": "workspace:*"
     "@batuto/config-typescript": "workspace:*"
     "@batuto/contract": "workspace:*"
     "@batuto/db": "workspace:*"
     "@batuto/env": "workspace:*"
     "@orpc/openapi": "npm:^1.14.8"
     "@orpc/server": "npm:^1.14.8"
+    "@orpc/standard-server-node": "npm:^1.14.8"
     "@types/cors": "npm:^2.8.19"
     "@types/express": "npm:^5.0.6"
+    "@types/node": "npm:^26.1.1"
     "@types/supertest": "npm:^7.2.1"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     cors: "npm:^2.8.6"
@@ -392,6 +395,19 @@ __metadata:
     tsx: "npm:^4.23.1"
     typescript: "npm:^5.9.3"
     vitest: "npm:^3.2.4"
+    zod: "npm:^4.1.13"
+  languageName: unknown
+  linkType: soft
+
+"@batuto/auth@workspace:*, @batuto/auth@workspace:packages/auth":
+  version: 0.0.0-use.local
+  resolution: "@batuto/auth@workspace:packages/auth"
+  dependencies:
+    "@batuto/config-typescript": "workspace:*"
+    "@clerk/backend": "npm:^3.11.7"
+    "@types/node": "npm:^26.1.1"
+    "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
+    typescript: "npm:^5.9.3"
     zod: "npm:^4.1.13"
   languageName: unknown
   linkType: soft
@@ -462,6 +478,7 @@ __metadata:
     "@base-ui/react": "npm:^1.6.0"
     "@batuto/contract": "workspace:*"
     "@batuto/env": "workspace:*"
+    "@clerk/react-router": "npm:^3.5.12"
     "@fontsource-variable/geist": "npm:^5.2.9"
     "@orpc/client": "npm:^1.14.8"
     "@orpc/contract": "npm:^1.14.8"
@@ -478,6 +495,7 @@ __metadata:
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
+    dotenv-cli: "npm:^11.0.0"
     isbot: "npm:^5.1.36"
     react: "npm:^19.2.7"
     react-dom: "npm:^19.2.7"
@@ -580,6 +598,67 @@ __metadata:
   version: 2.5.4
   resolution: "@biomejs/cli-win32-x64@npm:2.5.4"
   conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@clerk/backend@npm:^3.11.7":
+  version: 3.11.7
+  resolution: "@clerk/backend@npm:3.11.7"
+  dependencies:
+    "@clerk/shared": "npm:^4.25.5"
+    standardwebhooks: "npm:^1.0.0"
+    tslib: "npm:2.8.1"
+  checksum: 10c0/9ccc02e057c024e640c6fa0596e7be1489676f36ef8b5b37fd61ecdd88111947567592d6846335fd9cf4341e24fe388dff58a9dd7e36ff7228c8cb2830315a61
+  languageName: node
+  linkType: hard
+
+"@clerk/react-router@npm:^3.5.12":
+  version: 3.5.12
+  resolution: "@clerk/react-router@npm:3.5.12"
+  dependencies:
+    "@clerk/backend": "npm:^3.11.7"
+    "@clerk/react": "npm:^6.12.5"
+    "@clerk/shared": "npm:^4.25.5"
+    cookie: "npm:1.0.2"
+    tslib: "npm:2.8.1"
+  peerDependencies:
+    react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-router: ^7.9.0 || ^8.0.0
+  checksum: 10c0/45d2e5640ebb3faa6e53d2dbca6c6e97e8277b38268e28ead0ff6d20dff5ec511ee616a6d7d8a707853949191b9462f4df0fc72b639550d12f0c0eca21acb8a8
+  languageName: node
+  linkType: hard
+
+"@clerk/react@npm:^6.12.5":
+  version: 6.12.5
+  resolution: "@clerk/react@npm:6.12.5"
+  dependencies:
+    "@clerk/shared": "npm:^4.25.5"
+    tslib: "npm:2.8.1"
+  peerDependencies:
+    react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+  checksum: 10c0/95b057e43c5935c6d391aabbfe56cb98aaf88d5f788674de47819f19ef8edfdea90d07e33005d4680e01b5a80122fd3867ae8109b15bda9c3873d088fece2167
+  languageName: node
+  linkType: hard
+
+"@clerk/shared@npm:^4.25.5":
+  version: 4.25.5
+  resolution: "@clerk/shared@npm:4.25.5"
+  dependencies:
+    "@tanstack/query-core": "npm:^5.100.6"
+    dequal: "npm:2.0.3"
+    glob-to-regexp: "npm:0.4.1"
+    js-cookie: "npm:3.0.7"
+  peerDependencies:
+    react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-dom:
+      optional: true
+  checksum: 10c0/e370dffe939e754e60c2c6fe8ef5ee60c4bd685990ae4bc88d4fddd8ec12d7a25f091e0f212d3ac7a6c3e08ece9041c2eb2b22ac8303dcd7968deb3098e0f5b3
   languageName: node
   linkType: hard
 
@@ -1247,7 +1326,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@orpc/standard-server-node@npm:1.14.8":
+"@orpc/standard-server-node@npm:1.14.8, @orpc/standard-server-node@npm:^1.14.8":
   version: 1.14.8
   resolution: "@orpc/standard-server-node@npm:1.14.8"
   dependencies:
@@ -2306,6 +2385,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@stablelib/base64@npm:^1.0.0":
+  version: 1.0.1
+  resolution: "@stablelib/base64@npm:1.0.1"
+  checksum: 10c0/6330720f021819d19cecfe274111b79a256caa81df478d6b0ae7effc8842b96915b6aeed85926ff05b4d48ec1fc78ad043d928b730ee4e6cc6e8cba6aa097bed
+  languageName: node
+  linkType: hard
+
 "@standard-schema/spec@npm:^1.0.0, @standard-schema/spec@npm:^1.1.0":
   version: 1.1.0
   resolution: "@standard-schema/spec@npm:1.1.0"
@@ -2481,6 +2567,13 @@ __metadata:
   version: 5.101.2
   resolution: "@tanstack/query-core@npm:5.101.2"
   checksum: 10c0/c3288757bfd563ca35cee21bf6ed0edb2f4425a8c92f75d84dcb36a0580a59e48bd97fcdbbc7c8d8e95a4c40376edfc5772b14665b85d183079a0ba7e17793b2
+  languageName: node
+  linkType: hard
+
+"@tanstack/query-core@npm:^5.100.6":
+  version: 5.101.3
+  resolution: "@tanstack/query-core@npm:5.101.3"
+  checksum: 10c0/5e14f4ea2ad4deb81f62b3354dc07f457c86f5d39a108049d9697943ea509141ed19c69221e408d70d7abde6c87592bdfce16e8a71329778407e9be5526217ae
   languageName: node
   linkType: hard
 
@@ -3468,6 +3561,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"cookie@npm:1.0.2":
+  version: 1.0.2
+  resolution: "cookie@npm:1.0.2"
+  checksum: 10c0/fd25fe79e8fbcfcaf6aa61cd081c55d144eeeba755206c058682257cb38c4bd6795c6620de3f064c740695bb65b7949ebb1db7a95e4636efb8357a335ad3f54b
+  languageName: node
+  linkType: hard
+
 "cookie@npm:^0.7.1":
   version: 0.7.2
   resolution: "cookie@npm:0.7.2"
@@ -3662,6 +3762,13 @@ __metadata:
   version: 2.0.0
   resolution: "depd@npm:2.0.0"
   checksum: 10c0/58bd06ec20e19529b06f7ad07ddab60e504d9e0faca4bd23079fac2d279c3594334d736508dc350e06e510aba5e22e4594483b3a6562ce7c17dd797f4cc4ad2c
+  languageName: node
+  linkType: hard
+
+"dequal@npm:2.0.3":
+  version: 2.0.3
+  resolution: "dequal@npm:2.0.3"
+  checksum: 10c0/f98860cdf58b64991ae10205137c0e97d384c3a4edc7f807603887b7c4b850af1224a33d88012009f150861cbee4fa2d322c4cc04b9313bee312e47f6ecaa888
   languageName: node
   linkType: hard
 
@@ -4183,6 +4290,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fast-sha256@npm:^1.3.0":
+  version: 1.3.0
+  resolution: "fast-sha256@npm:1.3.0"
+  checksum: 10c0/87f9e4baa7639576cf60a2b6235c9f436e1a1c52323abbd8a705b5bea8355500acf176f2aed0c14f2ecd6d6007e26151461bab2f27b8953bcca8d9d6b76a86e4
+  languageName: node
+  linkType: hard
+
 "fast-uri@npm:^3.0.1":
   version: 3.1.3
   resolution: "fast-uri@npm:3.1.3"
@@ -4480,6 +4594,13 @@ __metadata:
   dependencies:
     is-glob: "npm:^4.0.1"
   checksum: 10c0/cab87638e2112bee3f839ef5f6e0765057163d39c66be8ec1602f3823da4692297ad4e972de876ea17c44d652978638d2fd583c6713d0eb6591706825020c9ee
+  languageName: node
+  linkType: hard
+
+"glob-to-regexp@npm:0.4.1":
+  version: 0.4.1
+  resolution: "glob-to-regexp@npm:0.4.1"
+  checksum: 10c0/0486925072d7a916f052842772b61c3e86247f0a80cc0deb9b5a3e8a1a9faad5b04fb6f58986a09f34d3e96cd2a22a24b7e9882fb1cf904c31e9a310de96c429
   languageName: node
   linkType: hard
 
@@ -4826,6 +4947,13 @@ __metadata:
   version: 6.2.3
   resolution: "jose@npm:6.2.3"
   checksum: 10c0/aa91bccba22cc84d86308f833749bcb0b00441e35c24e0ac79abeac5f76dc62d47bdef9c1da6a0c609f5da6478595f52b252085888b89dbdb163861e40ea4188
+  languageName: node
+  linkType: hard
+
+"js-cookie@npm:3.0.7":
+  version: 3.0.7
+  resolution: "js-cookie@npm:3.0.7"
+  checksum: 10c0/c921c43014e98bb94a1765663a1a10d693048d61444e374c1ecf459eba92320381f9c406e724df9aa44e819c4b606e6a7240f2abe2d5c54ad1e73a3002b191c2
   languageName: node
   linkType: hard
 
@@ -6723,6 +6851,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"standardwebhooks@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "standardwebhooks@npm:1.0.0"
+  dependencies:
+    "@stablelib/base64": "npm:^1.0.0"
+    fast-sha256: "npm:^1.3.0"
+  checksum: 10c0/aee097d0f3c05172c19b80df1ed9596a2ce92f8956957650d0bbe47c2ca6d36515796b51d523333cb4a48c889b2ab130d789e7879e14975c4381bc7a61274327
+  languageName: node
+  linkType: hard
+
 "statuses@npm:^2.0.1, statuses@npm:^2.0.2, statuses@npm:~2.0.2":
   version: 2.0.2
   resolution: "statuses@npm:2.0.2"
@@ -7080,7 +7218,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tslib@npm:^2.0.1, tslib@npm:^2.4.0, tslib@npm:^2.8.1":
+"tslib@npm:2.8.1, tslib@npm:^2.0.1, tslib@npm:^2.4.0, tslib@npm:^2.8.1":
   version: 2.8.1
   resolution: "tslib@npm:2.8.1"
   checksum: 10c0/9c4759110a19c53f992d9aae23aac5ced636e99887b51b9e61def52611732872ff7668757d4e4c61f19691e36f4da981cd9485e869b4a7408d689f6bf1f14e62

@@ -5,6 +5,8 @@ category: engineering
 last_updated: 2026-07-21
 related:
   - engineering/overview/stack.md
+  - engineering/modules/auth.md
+  - engineering/modules/frontend-auth.md
 ---
 
 # Infra and environments
@@ -30,6 +32,8 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 
 The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
 
+A real Clerk application exists (test-mode keys). `batuto-api`'s `dev`/`dev_personal` configs carry `CLERK_SECRET_KEY`/`CLERK_PUBLISHABLE_KEY`. `batuto-web`'s `dev`/`dev_personal` carry both `VITE_CLERK_PUBLISHABLE_KEY` (client-safe) and a copy of `CLERK_SECRET_KEY` (server-only, used by `apps/web`'s SSR loader — see [frontend-auth.md](../modules/frontend-auth.md)) — the same duplication pattern as `DATABASE_URL` across `batuto-db`/`batuto-api`: each runnable package's Doppler project holds what it actually needs, even when the underlying value is shared. `prd` configs on both projects are still empty; that's expected until a real production deploy exists, not a bootstrap blocker.
+
 ## Environment structure
 
 **Decided: dev/prod, not dev/staging/prod** (BAT-4). Two environments, matching the project's actual scale — a solo-maintained, single-band-at-launch app on a three-week bootstrap runway. `dev` is today's default/trunk branch and deploys to the dev environment; `main` is reserved for a future production branch and will deploy to prod once it exists (see `quality-gates.md`'s CI section for where the branch triggers will need to move). Staging can be added later if a real need shows up — it isn't blocked by this choice, just not provisioned speculatively now.
@@ -51,7 +55,9 @@ Local dev against the database can go two ways, in priority order:
 1. **A personal Neon branch** (preferred) — `yarn workspace @batuto/db db:branch` calls the Neon API to create-or-reuse a branch named `local/<current-git-branch>`, forked from the project's primary branch, and writes its pooled connection string as `DATABASE_URL` into `.env.local` in both `packages/db` and `apps/api`. Re-running it is idempotent (reuses the existing branch for that git branch name instead of creating a duplicate). Because `.env.local` lives on disk per-directory and is never touched by `env:pull`, each worktree or parallel Claude Code session gets its own isolated branch with no risk of collision — this is exactly why the connection string is **not** stored in Doppler's `dev_personal` config: that config is a single shared value, unsafe for multiple concurrent sessions with different lifecycles.
 2. **The local Postgres fallback** — `DATABASE_URL` in Doppler's `dev`/`dev_personal` config for `batuto-db`/`batuto-api`, pointing at a local Postgres instance (from BAT-4). Used automatically whenever no `.env.local` exists yet.
 
-Dev-only scripts that need `DATABASE_URL` are individually wrapped with `dotenv-cli`: `dotenv -e .env.local -e .env -- <command>` (e.g. `apps/api`'s `dev`/`test`, `packages/db`'s `migrate:dev`/`studio`/`db:branch`). `dotenv-cli`'s documented "first file wins" rule means `.env.local`'s `DATABASE_URL`, when present, overrides `.env`'s; a real env var already set in the process (e.g. by CI) always wins over both, and a missing file is silently skipped rather than erroring — so wrapping is harmless even where the files don't exist. Application code itself never loads env files (no `dotenv` import anywhere) — env vars simply need to already be in `process.env` by the time the process starts. Production/CI-facing scripts (`start`, `migrate:deploy`) are deliberately **not** wrapped, relying on the real deployed/CI environment instead; `codegen` (`prisma generate`) doesn't need `DATABASE_URL` at all, so it isn't wrapped either. `apps/web` needs no equivalent wiring: Vite already treats `.env.local` as highest-priority and gitignored by default.
+Dev-only scripts that need `DATABASE_URL` are individually wrapped with `dotenv-cli`: `dotenv -e .env.local -e .env -- <command>` (e.g. `apps/api`'s `dev`/`test`, `packages/db`'s `migrate:dev`/`studio`/`db:branch`). `dotenv-cli`'s documented "first file wins" rule means `.env.local`'s `DATABASE_URL`, when present, overrides `.env`'s; a real env var already set in the process (e.g. by CI) always wins over both, and a missing file is silently skipped rather than erroring — so wrapping is harmless even where the files don't exist. Application code itself never loads env files (no `dotenv` import anywhere) — env vars simply need to already be in `process.env` by the time the process starts. Production/CI-facing scripts (`start`, `migrate:deploy`) are deliberately **not** wrapped, relying on the real deployed/CI environment instead; `codegen` (`prisma generate`) doesn't need `DATABASE_URL` at all, so it isn't wrapped either.
+
+`apps/web`'s `dev`/`start` scripts are now `dotenv-cli`-wrapped too (BAT-17) — not for `DATABASE_URL`, but because `CLERK_SECRET_KEY` is a genuine server-side secret that must reach `process.env` for the SSR loader, and Vite's `import.meta.env` alone doesn't safely cover that case (see [frontend-auth.md](../modules/frontend-auth.md) for why). This supersedes the earlier assumption that `apps/web` needed no such wiring — that held only while every var it used was client-safe.
 
 The Neon project backing this (`batuto-db`'s Doppler `dev` config) also carries `NEON_API_KEY` (an org key scoped to just this Neon project), `NEON_PROJECT_ID`, and `BASE_DATABASE_URL` (the shared/primary branch's own pooled connection string — the parent every `local/*` branch, and every `check:migrations` CI run's ephemeral clone, forks from).
 

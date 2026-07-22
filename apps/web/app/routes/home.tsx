@@ -1,4 +1,6 @@
+import { Show, SignInButton, UserButton } from "@clerk/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
 import { orpc } from "~/lib/orpc";
 import type { Route } from "./+types/home";
@@ -21,6 +23,17 @@ export default function Home() {
         {error && `Error: ${error.message}`}
         {data?.message}
       </p>
+      <Show when="signed-out">
+        <SignInButton />
+      </Show>
+      <Show when="signed-in">
+        <div className="flex items-center gap-2">
+          <UserButton />
+          <Link to="/dashboard" className="underline">
+            Dashboard
+          </Link>
+        </div>
+      </Show>
     </main>
   );
 }
