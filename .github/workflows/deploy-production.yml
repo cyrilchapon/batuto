@@ -1,0 +1,26 @@
+name: Deploy to production
+
+# Imperative, CI-driven deploy on every push to main — not Vercel's or
+# Heroku's own git-push auto-deploy. See infra-and-envs.md's "Imperative
+# deploys" section.
+on:
+  push:
+    branches: [main]
+
+# Redeclared here, not just in _reusable-deploy.yml: for workflow_call, the
+# effective token permissions are the intersection of what the callee
+# requests and what the caller allows, so this can't rely on the reusable
+# workflow's own permissions: block alone.
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    name: Deploy
+    uses: ./.github/workflows/_reusable-deploy.yml
+    with:
+      gh-environment: Production
+      vercel-prod: true
+    secrets: inherit
