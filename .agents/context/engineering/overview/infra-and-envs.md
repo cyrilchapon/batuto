@@ -2,7 +2,7 @@
 title: Infra and environments
 summary: Doppler is the single secrets source syncing to Heroku/Vercel/CI; provisioned first, before anything that needs a secret
 category: engineering
-last_updated: 2026-07-21
+last_updated: 2026-07-24
 related:
   - engineering/overview/stack.md
   - engineering/modules/auth.md
@@ -47,6 +47,12 @@ Each runnable package's dedicated Doppler project (see below) carries two config
 - **Database** — Neon (Postgres). Use the **pooled** connection string for the Heroku backend (a long-lived Express process making frequent short queries is exactly the case the pooler is built for), not the direct one.
 
 Three deploy targets, one CI pipeline, secrets from one place (Doppler) — confirm both Vercel and Heroku deploys are actually wired through GitHub Actions / Vercel's integration, and that neither duplicates secrets by hand outside Doppler.
+
+### Vercel React Router preset
+
+`apps/web`'s `react-router.config.ts` registers `vercelPreset()` from `@vercel/react-router/vite` (per [Vercel's React Router framework docs](https://vercel.com/docs/frameworks/frontend/react-router)) rather than deploying with zero framework-specific config. The preset gives per-route runtime bundle splitting (confirmed locally: `yarn turbo run build --filter=@batuto/web` produces a runtime-tagged SSR bundle) and an accurate deployment summary on Vercel; it writes build artifacts to `.vercel/` (gitignored, root `.gitignore`).
+
+**Known version mismatch to watch:** `@vercel/react-router`'s latest release (1.3.1, as of this writing) declares `peerDependencies` on `@react-router/dev@^7` / `@react-router/node@^7`, while this repo is on react-router **v8** (`^8.0.0` across `react-router`/`@react-router/dev`/`@react-router/node`/`@react-router/serve`). Installing it prints a Yarn peer-dependency warning (`YN0060`) but isn't fatal — the repo uses the `node-modules` linker, not PnP, so mismatched peers don't hard-fail the install, and the build was verified working end-to-end despite the warning. Don't assume the warning means it's broken, and don't assume future upgrades of either package are guaranteed to stay compatible — re-verify with a real `turbo build` after bumping either one until `@vercel/react-router` publishes explicit v8 support.
 
 ## Neon database branching (local dev)
 
