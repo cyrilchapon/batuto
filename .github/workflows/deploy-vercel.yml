@@ -26,6 +26,10 @@ jobs:
   deploy-web:
     name: Deploy web to Vercel
     runs-on: ubuntu-latest
+    # Maps 1:1 onto the same push/pull_request split used below for
+    # `vercel pull --environment=...` and `--prod` — this is what scopes
+    # vars.VERCEL_ORG_ID/vars.VERCEL_PROJECT_ID to the right value.
+    environment: ${{ github.event_name == 'pull_request' && 'Preview' || 'Production' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -40,14 +44,6 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
-
-      - name: Fetch Doppler secrets
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
-        id: doppler
-        with:
-          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
-          doppler-project: batuto-deploy
-          doppler-config: dev
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
@@ -68,25 +64,25 @@ jobs:
       - name: Pull Vercel project settings and env vars
         working-directory: apps/web
         env:
-          VERCEL_TOKEN: ${{ steps.doppler.outputs.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: vercel pull --yes --environment=${{ steps.target.outputs.environment }} --token="$VERCEL_TOKEN"
 
       - name: Build
         working-directory: apps/web
         env:
-          VERCEL_TOKEN: ${{ steps.doppler.outputs.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: vercel build ${{ steps.target.outputs.prod_flag }} --token="$VERCEL_TOKEN"
 
       - name: Deploy prebuilt to Vercel
         uses: BetaHuhn/deploy-to-vercel-action@v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERCEL_TOKEN: ${{ steps.doppler.outputs.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           WORKING_DIRECTORY: apps/web
           PREBUILT: true
