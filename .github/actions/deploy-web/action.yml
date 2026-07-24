@@ -1,0 +1,53 @@
+name: Deploy web to Vercel
+description: >
+  Downloads a prebuilt Vercel build artifact (produced by a prior
+  `vercel build` step) and deploys it via `vercel deploy --prebuilt` —
+  Vercel never sees or builds from source. Assumes release (database
+  migrations) already succeeded.
+
+inputs:
+  artifact-name:
+    description: Name of the build-output artifact uploaded by the build step
+    required: true
+  github-token:
+    description: GitHub token, for creating a GitHub Deployment and PR comment
+    required: true
+  vercel-token:
+    required: true
+  vercel-org-id:
+    required: true
+  vercel-project-id:
+    required: true
+  production:
+    description: "'true' for a Vercel production deploy, 'false' for preview"
+    required: false
+    default: "false"
+
+outputs:
+  preview-url:
+    description: The deployed Vercel URL
+    value: ${{ steps.deploy.outputs.PREVIEW_URL }}
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Download build output
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: apps/web/.vercel/output
+
+    - name: Deploy prebuilt to Vercel
+      id: deploy
+      uses: BetaHuhn/deploy-to-vercel-action@v1
+      with:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+        WORKING_DIRECTORY: apps/web
+        PREBUILT: true
+        PRODUCTION: ${{ inputs.production }}

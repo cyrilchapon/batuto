@@ -11,11 +11,13 @@ name: Deploy PR review app
 # lookup needed); release (migrations against this PR's own Neon clone,
 # run directly from CI, not through Heroku's release-phase mechanism —
 # same reasoning as the reusable pipeline) only starts once neon-branch,
-# build-api, AND build-web have all succeeded. Unlike production/staging,
-# deploy-api and deploy-web are NOT parallel here — deploy-web waits on
-# deploy-api, and a final `link-cors` step waits on deploy-web, because
-# the web preview's real URL is only known after it actually deploys (the
-# API's URL is deterministic in advance, but the reverse isn't).
+# build-api, AND build-web have all succeeded. deploy-api/deploy-web call
+# the same .github/actions/deploy-{api,web} composite actions
+# _reusable-deploy.yml uses, but sequentially here rather than in
+# parallel: deploy-web waits on deploy-api, and a final `link-cors` step
+# waits on deploy-web, because the web preview's real URL is only known
+# after it actually deploys (the API's URL is deterministic in advance,
+# but the reverse isn't).
 on:
   pull_request:
     branches: [dev]
@@ -213,6 +215,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [neon-branch, release]
     steps:
+      # Required even though the steps below don't read repo files
+      # directly — a local composite action (`uses: ./...`) only resolves
+      # once the repo containing it is checked out.
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Install Heroku CLI
         run: curl https://cli-assets.heroku.com/install.sh | sh
 
@@ -228,7 +236,10 @@ jobs:
       # PR's own Neon clone, never the shared dev database) and WEB_URL
       # (unknown yet — the web review app doesn't exist until deploy-web
       # runs next. It defaults to a harmless value; `link-cors` patches in
-      # the real preview URL once it exists).
+      # the real preview URL once it exists). Review-app-specific, so it
+      # stays here rather than in the shared deploy-api action — staging
+      # and production never set config vars from CI at all, Doppler's
+      # own Heroku integration handles that for their static apps.
       - name: Set config vars on the review app
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -243,27 +254,11 @@ jobs:
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             --app "$APP_NAME"
 
-      - name: Log in to Heroku Container Registry
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-        run: heroku container:login
-
-      - name: Pull built image
-        env:
-          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
-        run: docker pull "registry.heroku.com/$APP_NAME/web"
-
-      # `container:release` is Heroku's own CLI command name for "deploy
-      # this image" — every Heroku deploy creates a Release object, that's
-      # just Heroku's product terminology. This is NOT Heroku's separate,
-      # opt-in release-phase hook feature — this pipeline doesn't use
-      # that at all. Migrations already ran, separately, in the `release`
-      # job above, with zero Heroku/API involvement.
-      - name: Deploy image to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
-        run: heroku container:release web --app "$APP_NAME"
+      - name: Deploy API
+        uses: ./.github/actions/deploy-api
+        with:
+          heroku-api-key: ${{ secrets.HEROKU_API_KEY }}
+          heroku-app-name: batuto-api-pr-${{ github.event.pull_request.number }}
 
   deploy-web:
     name: Deploy web review app to Vercel
@@ -272,27 +267,21 @@ jobs:
     needs: deploy-api
     environment: Preview
     outputs:
-      web_url: ${{ steps.deploy.outputs.PREVIEW_URL }}
+      web_url: ${{ steps.deploy.outputs.preview-url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Download build output
-        uses: actions/download-artifact@v4
-        with:
-          name: vercel-output-pr-${{ github.event.pull_request.number }}
-          path: apps/web/.vercel/output
-
-      - name: Deploy prebuilt to Vercel
+      - name: Deploy web
         id: deploy
-        uses: BetaHuhn/deploy-to-vercel-action@v1
+        uses: ./.github/actions/deploy-web
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-          WORKING_DIRECTORY: apps/web
-          PREBUILT: true
+          artifact-name: vercel-output-pr-${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+          production: "false"
 
   link-cors:
     name: Point the API review app back at its web preview URL

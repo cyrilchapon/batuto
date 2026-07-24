@@ -11,9 +11,10 @@ name: Reusable deploy (build -> release -> deploy)
 # not via Heroku's release-phase dyno mechanism, deliberately: it's a
 # plain, visible CI step, same pattern as db-checks.yml) only starts once
 # *both* builds have succeeded; deploy-api and deploy-web (the actual
-# platform deploys) only start once the release has succeeded, and run in
-# parallel with each other. See infra-and-envs.md's "Imperative deploys"
-# section.
+# platform deploys, via the .github/actions/deploy-{api,web} composite
+# actions — also reused by deploy-preview.yml) only start once the
+# release has succeeded, and run in parallel with each other. See
+# infra-and-envs.md's "Imperative deploys" section.
 on:
   workflow_call:
     inputs:
@@ -150,7 +151,10 @@ jobs:
           DATABASE_URL: ${{ steps.doppler.outputs.BASE_DATABASE_URL }}
 
   # --- Deploy (parallel) ---
-  # Both wait on release succeeding; neither waits on the other.
+  # Both wait on release succeeding; neither waits on the other. Both call
+  # the shared .github/actions/deploy-{api,web} composite actions — same
+  # actions deploy-preview.yml calls, just sequentially there instead of
+  # in parallel.
 
   deploy-api:
     name: Deploy API to Heroku
@@ -158,34 +162,17 @@ jobs:
     needs: release
     environment: ${{ inputs.gh-environment }}
     steps:
-      - name: Install Heroku CLI
-        run: curl https://cli-assets.heroku.com/install.sh | sh
+      # Required even though this job reads no repo files itself — a
+      # local composite action (`uses: ./...`) only resolves once the
+      # repo containing it is checked out.
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - name: Log in to Heroku Container Registry
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-        run: heroku container:login
-
-      # container:release inspects the image via the local Docker daemon —
-      # this job runs on a fresh runner from build-api's, so pull the
-      # image build-api already pushed first.
-      - name: Pull built image
-        env:
-          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
-        run: docker pull "registry.heroku.com/$HEROKU_APP_NAME/web"
-
-      # `container:release` is Heroku's own CLI command name for "deploy
-      # this image" — every Heroku deploy creates a Release object, that's
-      # just Heroku's product terminology. This is NOT Heroku's separate,
-      # opt-in release-phase hook feature (which needs a `release` process
-      # type and runs pre-deploy side effects) — this pipeline doesn't use
-      # that at all. Migrations already ran, separately, in the `release`
-      # job above, with zero Heroku/API involvement.
-      - name: Deploy image to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
-        run: heroku container:release web --app "$HEROKU_APP_NAME"
+      - name: Deploy API
+        uses: ./.github/actions/deploy-api
+        with:
+          heroku-api-key: ${{ secrets.HEROKU_API_KEY }}
+          heroku-app-name: ${{ vars.HEROKU_APP_NAME }}
 
   deploy-web:
     name: Deploy web to Vercel
@@ -196,19 +183,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Download build output
-        uses: actions/download-artifact@v4
+      - name: Deploy web
+        uses: ./.github/actions/deploy-web
         with:
-          name: vercel-output-${{ inputs.gh-environment }}
-          path: apps/web/.vercel/output
-
-      - name: Deploy prebuilt to Vercel
-        uses: BetaHuhn/deploy-to-vercel-action@v1
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-          WORKING_DIRECTORY: apps/web
-          PREBUILT: true
-          PRODUCTION: ${{ inputs.vercel-prod }}
+          artifact-name: vercel-output-${{ inputs.gh-environment }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+          production: ${{ inputs.vercel-prod }}
