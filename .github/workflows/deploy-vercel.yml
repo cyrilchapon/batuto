@@ -4,6 +4,12 @@ name: Deploy web to Vercel
 # (apps/web/vercel.json sets git.deploymentEnabled: false). Production
 # deploys on push to dev/main, preview deploys on PRs targeting dev. See
 # infra-and-envs.md's "Imperative deploys" section.
+#
+# Build runs here (via `vercel build`, which is Turborepo-aware the same
+# way Vercel's own remote build is — see the removed apps/web/vercel.json
+# buildCommand override), not on Vercel's remote build infra: `vercel
+# deploy --prebuilt` only uploads and deploys the already-built
+# .vercel/output produced below.
 on:
   push:
     branches: [dev, main]
@@ -24,6 +30,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
       - name: Fetch Doppler secrets
         uses: dopplerhq/secrets-fetch-action@v2.0.0
         id: doppler
@@ -32,10 +49,39 @@ jobs:
           doppler-project: batuto-deploy
           doppler-config: dev
 
-      # PRODUCTION is left unset: the action defaults to a production
-      # deployment on push, and a preview deployment (+ PR comment) on
-      # pull_request, which matches push:[dev, main] + pull_request:[dev].
-      - name: Deploy to Vercel
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # pull_request -> preview (Vercel's Preview env vars + non-prod build);
+      # push (dev or main) -> production.
+      - name: Determine Vercel target
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "environment=preview" >> "$GITHUB_OUTPUT"
+            echo "prod_flag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "prod_flag=--prod" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pull Vercel project settings and env vars
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ steps.doppler.outputs.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=${{ steps.target.outputs.environment }} --token="$VERCEL_TOKEN"
+
+      - name: Build
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ steps.doppler.outputs.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
+        run: vercel build ${{ steps.target.outputs.prod_flag }} --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt to Vercel
         uses: BetaHuhn/deploy-to-vercel-action@v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,3 +89,4 @@ jobs:
           VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
           WORKING_DIRECTORY: apps/web
+          PREBUILT: true
