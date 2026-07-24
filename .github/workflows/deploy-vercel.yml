@@ -1,0 +1,45 @@
+name: Deploy web to Vercel
+
+# Imperative, CI-driven deploy — not Vercel's Git integration
+# (apps/web/vercel.json sets git.deploymentEnabled: false). Production
+# deploys on push to dev/main, preview deploys on PRs targeting dev. See
+# infra-and-envs.md's "Imperative deploys" section.
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  deploy-web:
+    name: Deploy web to Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-deploy
+          doppler-config: dev
+
+      # PRODUCTION is left unset: the action defaults to a production
+      # deployment on push, and a preview deployment (+ PR comment) on
+      # pull_request, which matches push:[dev, main] + pull_request:[dev].
+      - name: Deploy to Vercel
+        uses: BetaHuhn/deploy-to-vercel-action@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERCEL_TOKEN: ${{ steps.doppler.outputs.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ steps.doppler.outputs.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ steps.doppler.outputs.VERCEL_PROJECT_ID }}
+          WORKING_DIRECTORY: apps/web
