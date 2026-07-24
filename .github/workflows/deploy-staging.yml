@@ -27,4 +27,5 @@ jobs:
     with:
       gh-environment: Staging
       vercel-prod: false
+      doppler-config: dev
     secrets: inherit

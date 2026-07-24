@@ -21,16 +21,5 @@ RUN yarn install --immutable
 FROM deps AS build
 RUN yarn turbo run build --filter=...@batuto/api
 ENV NODE_ENV=production
-
-# Two named final stages, both FROM build so they share every cached layer
-# up through the turbo build — building `release` after `web` (or vice
-# versa) is nearly free. Heroku runs `release` as a one-off release-phase
-# dyno before promoting `web`, gated atomically by Heroku itself (see
-# deploy workflows' `release-api`/`deploy-api-review` jobs, which push
-# and release both images in a single formation update).
-FROM build AS web
 EXPOSE 3000
 CMD ["yarn", "workspace", "@batuto/api", "start"]
-
-FROM build AS release
-CMD ["yarn", "workspace", "@batuto/db", "migrate:deploy"]

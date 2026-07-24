@@ -6,14 +6,14 @@ name: Reusable deploy (build -> release -> deploy)
 # which need a dynamically-created Heroku app and a linked Vercel preview,
 # not a static gh-environment/vars.HEROKU_APP_NAME.
 #
-# Job graph: release-api (build + push + Heroku release, one job — the
-# Heroku CLI's container:release needs the just-pushed images in the same
-# Docker daemon it's inspecting, so build/push and release can't be split
-# across separate runners) runs in parallel with build-web, then gates
-# deploy-web (Vercel) — deploy only happens once the release has actually
-# succeeded. See infra-and-envs.md's "Imperative deploys" section for why
-# Heroku's release phase and web promotion can't be split into two
-# separately CI-controlled steps the way build/deploy can for Vercel.
+# Three strict phases: build-api and build-web run fully in parallel;
+# release (database migrations, run directly against the real database —
+# not via Heroku's release-phase dyno mechanism, deliberately: it's a
+# plain, visible CI step, same pattern as db-checks.yml) only starts once
+# *both* builds have succeeded; deploy-api and deploy-web (the actual
+# platform deploys) only start once the release has succeeded, and run in
+# parallel with each other. See infra-and-envs.md's "Imperative deploys"
+# section.
 on:
   workflow_call:
     inputs:
@@ -25,6 +25,10 @@ on:
         description: Whether this is a Vercel production deploy (true) or a preview deploy (false)
         required: true
         type: boolean
+      doppler-config:
+        description: batuto-db Doppler config to pull the real BASE_DATABASE_URL from for migrations (dev | prd)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -32,8 +36,10 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-api:
-    name: Build, push, and release API to Heroku
+  # --- Build (parallel) ---
+
+  build-api:
+    name: Build API image (Docker)
     runs-on: ubuntu-latest
     environment: ${{ inputs.gh-environment }}
     steps:
@@ -48,41 +54,15 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: heroku container:login
 
-      - name: Build web image
+      - name: Build image
         env:
           HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
-        run: docker build --target web -t "registry.heroku.com/$HEROKU_APP_NAME/web" -f apps/api/Dockerfile .
+        run: docker build -t "registry.heroku.com/$HEROKU_APP_NAME/web" -f apps/api/Dockerfile .
 
-      # FROM build, same as `web` — shares every cached layer, so this is
-      # nearly free after the `web` build above.
-      - name: Build release image
-        env:
-          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
-        run: docker build --target release -t "registry.heroku.com/$HEROKU_APP_NAME/release" -f apps/api/Dockerfile .
-
-      - name: Push web image
+      - name: Push image
         env:
           HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
         run: docker push "registry.heroku.com/$HEROKU_APP_NAME/web"
-
-      - name: Push release image
-        env:
-          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
-        run: docker push "registry.heroku.com/$HEROKU_APP_NAME/release"
-
-      # Heroku's actual release-phase mechanism: runs `release` (defined
-      # by apps/api/Dockerfile's `release` stage CMD — `migrate:deploy`)
-      # as a one-off dyno first, and only promotes `web` to the new
-      # release if that exits 0. This is gated atomically by Heroku
-      # itself, not a CI script's exit code — `heroku releases`/`heroku
-      # rollback` work against the result same as any other Heroku
-      # deploy. `container:release` blocks until release phase finishes
-      # and fails the step (non-zero exit) if it does.
-      - name: Release to Heroku (migrations, then promote web)
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
-        run: heroku container:release web release --app "$HEROKU_APP_NAME"
 
   build-web:
     name: Build web (Vercel prebuilt)
@@ -129,10 +109,81 @@ jobs:
           path: apps/web/.vercel/output
           retention-days: 1
 
+  # --- Release ---
+  # Waits on *both* builds — don't run migrations before knowing the web
+  # build even works. Runs migrations directly against the real database
+  # from this job (same yarn workspace @batuto/db migrate:deploy pattern
+  # db-checks.yml already uses), not through Heroku's release-phase dyno —
+  # a plain, visible CI step rather than something buried in a dyno's log
+  # stream.
+
+  release:
+    name: Run database migrations
+    runs-on: ubuntu-latest
+    needs: [build-api, build-web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-db
+          doppler-config: ${{ inputs.doppler-config }}
+
+      - name: Apply database migrations
+        run: yarn workspace @batuto/db migrate:deploy
+        env:
+          DATABASE_URL: ${{ steps.doppler.outputs.BASE_DATABASE_URL }}
+
+  # --- Deploy (parallel) ---
+  # Both wait on release succeeding; neither waits on the other.
+
+  deploy-api:
+    name: Deploy API to Heroku
+    runs-on: ubuntu-latest
+    needs: release
+    environment: ${{ inputs.gh-environment }}
+    steps:
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Log in to Heroku Container Registry
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku container:login
+
+      # container:release inspects the image via the local Docker daemon —
+      # this job runs on a fresh runner from build-api's, so pull the
+      # image build-api already pushed first.
+      - name: Pull built image
+        env:
+          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
+        run: docker pull "registry.heroku.com/$HEROKU_APP_NAME/web"
+
+      - name: Release (promote the built image)
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
+        run: heroku container:release web --app "$HEROKU_APP_NAME"
+
   deploy-web:
     name: Deploy web to Vercel
     runs-on: ubuntu-latest
-    needs: [release-api, build-web]
+    needs: release
     environment: ${{ inputs.gh-environment }}
     steps:
       - name: Checkout
