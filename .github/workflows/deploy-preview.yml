@@ -253,7 +253,13 @@ jobs:
           APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
         run: docker pull "registry.heroku.com/$APP_NAME/web"
 
-      - name: Release (promote the built image)
+      # `container:release` is Heroku's own CLI command name for "deploy
+      # this image" — every Heroku deploy creates a Release object, that's
+      # just Heroku's product terminology. This is NOT Heroku's separate,
+      # opt-in release-phase hook feature — this pipeline doesn't use
+      # that at all. Migrations already ran, separately, in the `release`
+      # job above, with zero Heroku/API involvement.
+      - name: Deploy image to Heroku
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
