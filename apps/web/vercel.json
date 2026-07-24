@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "corepack enable && cd ../.. && yarn install --immutable",
+  "installCommand": "yarn install --immutable",
   "buildCommand": "corepack enable && cd ../.. && yarn turbo run build --filter=@batuto/web..."
 }
