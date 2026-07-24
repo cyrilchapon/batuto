@@ -3,5 +3,5 @@
   "git": {
     "deploymentEnabled": false
   },
-  "buildCommand": "yarn turbo @batuto/web#build"
+  "buildCommand": "cd ../.. && yarn turbo @batuto/web#build"
 }
