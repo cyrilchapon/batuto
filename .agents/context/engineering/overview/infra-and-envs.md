@@ -7,6 +7,7 @@ related:
   - engineering/overview/stack.md
   - engineering/modules/auth.md
   - engineering/modules/frontend-auth.md
+  - engineering/overview/quality-gates.md
 ---
 
 # Infra and environments
@@ -18,6 +19,7 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 - **Heroku** — Doppler's Heroku integration pushes config vars automatically on change.
 - **Vercel** — Doppler's Vercel integration does the same for frontend env vars.
 - **CI (GitHub Actions)** — pulls secrets via `dopplerhq/secrets-fetch-action`, not duplicated into GitHub Secrets. The one exception is the Doppler credential itself: a single `DOPPLER_TOKEN` GitHub Actions secret, set by hand (there's no way around that — it's what authenticates the fetch). It's a **personal** Doppler token, not a service token — the plan in use doesn't have Service Accounts. The action's own docs only explicitly cover service/service-account tokens, but a personal token works the same way against Doppler's API for reads. Workflow steps reference `steps.doppler.outputs.<SECRET_NAME>` (output-per-secret is the action's default mode). `doppler-project: batuto-db` / `doppler-config: dev` — the shared, non-personal branch, since CI isn't tied to one developer.
+- **Deploy credentials** — a fourth Doppler project, `batuto-deploy` (`dev` config only so far), holds the credentials the deploy pipeline itself needs rather than the running apps: `HEROKU_API_KEY`, `HEROKU_APP_NAME`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. These aren't scoped to `batuto-api`/`batuto-web` because they're consumed by the CI job that ships the app, not by the app's own runtime — see "Imperative deploys" below.
 - **Local dev** — each runnable package (`apps/api`, `apps/web`, `packages/db`) has its own dedicated Doppler project and an `env:pull` script that writes a real, gitignored `.env` file on disk:
 
   ```json
@@ -46,7 +48,18 @@ Each runnable package's dedicated Doppler project (see below) carries two config
 - **Backend** — Heroku.
 - **Database** — Neon (Postgres). Use the **pooled** connection string for the Heroku backend (a long-lived Express process making frequent short queries is exactly the case the pooler is built for), not the direct one.
 
-Three deploy targets, one CI pipeline, secrets from one place (Doppler) — confirm both Vercel and Heroku deploys are actually wired through GitHub Actions / Vercel's integration, and that neither duplicates secrets by hand outside Doppler.
+Three deploy targets, one CI pipeline, secrets from one place (Doppler).
+
+### Imperative deploys — CI-driven, not Git-integration auto-deploy
+
+**Decided:** deploys are triggered imperatively from GitHub Actions (`.github/workflows/deploy.yml`, two independent jobs, both on push to `dev`), not by Vercel's or Heroku's own git-push auto-deploy. This is a one-time manual toggle on each platform, done outside the repo:
+
+- **Vercel** — project Settings → Git → disconnect the repo (or turn off auto-deploy for the production branch); the project's Root Directory / framework preset stay as configured, only the auto-trigger-on-push behavior is disabled. The `deploy-web` job deploys via the Vercel CLI (`vercel pull` → `vercel build` → `vercel deploy --prebuilt --prod`) instead.
+- **Heroku** — app → Deploy tab → if a GitHub auto-deploy branch is configured, disable it (and don't use `git push heroku` / `heroku.yml`-based deploys either — those are also git-triggered). The `deploy-api` job builds a Docker image from `apps/api/Dockerfile` (build context = repo root, per the Yarn workspaces dependency chain — see the Dockerfile's own comments), pushes it to Heroku's Container Registry, and releases it via the Platform API's `formation` endpoint (`Accept: application/vnd.heroku+json; version=3.docker-releases`) — the documented imperative Docker-deploy flow, no Heroku CLI install needed in CI.
+
+Both jobs fetch their credentials from Doppler's `batuto-deploy` project (see above) and run under a GitHub Environment named `dev` (Settings → Environments) — the environment exists for GitHub's own deployment visibility/protection-rules, not as a secrets store; secrets still flow through Doppler exclusively, same as every other workflow in this repo.
+
+Confirm both Vercel and Heroku deploys are actually wired through this workflow, and that neither duplicates secrets by hand outside Doppler.
 
 ### Vercel React Router preset
 
@@ -90,4 +103,4 @@ Betterstack covers logs, error tracking, and uptime monitoring — one platform,
 
 ## CI/CD
 
-GitHub Actions: lint, typecheck, and test on PR; deploy pipelines to Vercel (frontend) and Heroku (backend). Secrets sourced from Doppler, never GitHub Secrets.
+GitHub Actions: lint, typecheck, and test on PR (`checks.yml`, `build-and-test.yml`, `db-checks.yml`); imperative deploy pipelines to Vercel (frontend) and Heroku (backend, via Docker) on push to `dev` (`deploy.yml` — see "Imperative deploys" above). Secrets sourced from Doppler, never GitHub Secrets.

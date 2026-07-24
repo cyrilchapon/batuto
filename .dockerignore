@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.git
+.turbo
+dist
+dist-types
+build
+.react-router
+.vercel
+packages/db/src/generated
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
