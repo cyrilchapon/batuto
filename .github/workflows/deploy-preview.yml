@@ -110,9 +110,10 @@ jobs:
     name: Build web (Vercel prebuilt)
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
-    # Scopes vars.VERCEL_ORG_ID/vars.VERCEL_PROJECT_ID to the existing
-    # Preview GitHub Environment — without this they'd resolve empty, the
-    # same failure mode debugged earlier in this repo's history.
+    # vars.VERCEL_ORG_ID/vars.VERCEL_PROJECT_ID are repository-level now
+    # (they never varied by environment), so this isn't load-bearing for
+    # them — kept for GitHub's Preview deployment visibility/protection
+    # rules.
     environment: Preview
     steps:
       - name: Checkout
