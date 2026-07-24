@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "yarn": "4.17.1"
+  },
   "scripts": {
     "env:pull": "doppler secrets download --project=batuto-api --config=dev_personal --no-file --format=env > .env",
     "dev": "dotenv -e .env.local -e .env -- tsx watch src/index.ts",
