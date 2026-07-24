@@ -31,46 +31,28 @@ permissions:
 jobs:
   # --- Build (parallel) ---
 
+  # Fail-fast only: verifies the branch can actually be created/reused
+  # early, in parallel with the builds. Its own output isn't used anywhere
+  # — release and deploy-api each call .github/actions/neon-pr-branch
+  # again themselves (fast, idempotent reuse by this point) rather than
+  # reading a job-level output here, because GitHub Actions silently
+  # drops masked values (this action's connection-string outputs embed a
+  # password) from `needs.<job>.outputs` — confirmed via a real CI
+  # failure ("Skip output 'database_url' since it may contain secret").
+  # See the action's own comments for the full explanation.
   neon-branch:
     name: Create or reuse PR database branch
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
-    outputs:
-      database_url: ${{ steps.branch.outputs.db_url_pooled }}
     steps:
-      - name: Fetch Doppler secrets
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
-        id: doppler
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Create or reuse Neon branch
+        uses: ./.github/actions/neon-pr-branch
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
-          doppler-project: batuto-db
-          doppler-config: dev
-
-      - name: Parse dev database/role
-        id: dev-parent
-        env:
-          BASE_DATABASE_URL: ${{ steps.doppler.outputs.BASE_DATABASE_URL }}
-        run: |
-          node -e '
-            const u = new URL(process.env.BASE_DATABASE_URL);
-            console.log("database=" + u.pathname.replace(/^\//, ""));
-            console.log("role=" + decodeURIComponent(u.username));
-          ' >> "$GITHUB_OUTPUT"
-
-      # No expires_at, unlike db-checks.yml's ephemeral branches — this one
-      # lives for the PR's lifetime, deleted only by the `teardown` job
-      # below. branch_name is stable across re-pushes to the same PR:
-      # create-branch-action reuses an existing branch with the same name
-      # instead of erroring or duplicating (confirmed via its own docs).
-      - name: Create or reuse Neon branch
-        id: branch
-        uses: neondatabase/create-branch-action@v6
-        with:
-          project_id: ${{ steps.doppler.outputs.NEON_PROJECT_ID }}
-          api_key: ${{ steps.doppler.outputs.NEON_API_KEY }}
-          branch_name: pr-${{ github.event.pull_request.number }}
-          database: ${{ steps.dev-parent.outputs.database }}
-          role: ${{ steps.dev-parent.outputs.role }}
+          pr-number: ${{ github.event.pull_request.number }}
 
   build-api:
     name: Build API image (Docker)
@@ -174,10 +156,11 @@ jobs:
           retention-days: 1
 
   # --- Release ---
-  # Waits on neon-branch (needs its DATABASE_URL) and *both* builds — same
-  # reasoning as _reusable-deploy.yml: don't run migrations before knowing
-  # the web build even works. Runs migrations directly against this PR's
-  # own Neon clone, never the shared dev database.
+  # Waits on neon-branch (so the branch is guaranteed to exist by the time
+  # this re-fetches it) and *both* builds — same reasoning as
+  # _reusable-deploy.yml: don't run migrations before knowing the web
+  # build even works. Runs migrations directly against this PR's own
+  # Neon clone, never the shared dev database.
 
   release:
     name: Run database migrations (PR clone)
@@ -199,10 +182,19 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # Re-fetches this PR's Neon branch details rather than reading
+      # neon-branch's output — see that job's comment for why.
+      - name: Get PR database branch
+        id: neon
+        uses: ./.github/actions/neon-pr-branch
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+
       - name: Apply database migrations
         run: yarn workspace @batuto/db migrate:deploy
         env:
-          DATABASE_URL: ${{ needs.neon-branch.outputs.database_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.database-url }}
 
   # --- Deploy ---
   # Sequential, not parallel, unlike production/staging: deploy-web needs
@@ -225,6 +217,15 @@ jobs:
       - name: Install Heroku CLI
         run: curl https://cli-assets.heroku.com/install.sh | sh
 
+      # Re-fetches this PR's Neon branch details rather than reading
+      # neon-branch's output — see that job's comment for why.
+      - name: Get PR database branch
+        id: neon
+        uses: ./.github/actions/neon-pr-branch
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+
       - name: Fetch Doppler secrets (app runtime config)
         uses: dopplerhq/secrets-fetch-action@v2.0.0
         id: doppler
@@ -245,7 +246,7 @@ jobs:
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
-          DATABASE_URL: ${{ needs.neon-branch.outputs.database_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.database-url }}
           CLERK_SECRET_KEY: ${{ steps.doppler.outputs.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ steps.doppler.outputs.CLERK_PUBLISHABLE_KEY }}
         run: |
