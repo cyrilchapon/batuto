@@ -1,0 +1,66 @@
+name: Create or reuse PR Neon branch
+description: >
+  Creates (or reuses, idempotently) a persistent Neon branch named
+  pr-<number>, forked from the shared dev branch, and returns its pooled
+  connection string. Safe to call from multiple jobs for the same PR —
+  after the first call, every later call just returns the existing
+  branch's details.
+
+  Deliberately NOT exposed as a job-level output anywhere this action is
+  used: create-branch-action registers its connection-string outputs as
+  secrets (they embed a password), and GitHub Actions silently drops
+  masked values from job outputs (`needs.<job>.outputs`) rather than
+  propagating them — confirmed via a real CI failure ("Skip output
+  'database_url' since it may contain secret"). Consuming this action's
+  `database-url` output in a *later step of the same job* works fine;
+  every job that needs the connection string calls this action itself
+  rather than reading it from another job.
+
+inputs:
+  doppler-token:
+    description: Doppler token (repository secret) — used to fetch batuto-db's dev config
+    required: true
+  pr-number:
+    description: Pull request number — the branch is named pr-<number>
+    required: true
+
+outputs:
+  database-url:
+    description: Pooled connection string for this PR's Neon branch
+    value: ${{ steps.branch.outputs.db_url_pooled }}
+  branch-id:
+    description: Neon branch ID (not a secret, safe to use as a job output if ever needed)
+    value: ${{ steps.branch.outputs.branch_id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch Doppler secrets
+      uses: dopplerhq/secrets-fetch-action@v2.0.0
+      id: doppler
+      with:
+        doppler-token: ${{ inputs.doppler-token }}
+        doppler-project: batuto-db
+        doppler-config: dev
+
+    - name: Parse dev database/role
+      id: dev-parent
+      shell: bash
+      env:
+        BASE_DATABASE_URL: ${{ steps.doppler.outputs.BASE_DATABASE_URL }}
+      run: |
+        node -e '
+          const u = new URL(process.env.BASE_DATABASE_URL);
+          console.log("database=" + u.pathname.replace(/^\//, ""));
+          console.log("role=" + decodeURIComponent(u.username));
+        ' >> "$GITHUB_OUTPUT"
+
+    - name: Create or reuse Neon branch
+      id: branch
+      uses: neondatabase/create-branch-action@v6
+      with:
+        project_id: ${{ steps.doppler.outputs.NEON_PROJECT_ID }}
+        api_key: ${{ steps.doppler.outputs.NEON_API_KEY }}
+        branch_name: pr-${{ inputs.pr-number }}
+        database: ${{ steps.dev-parent.outputs.database }}
+        role: ${{ steps.dev-parent.outputs.role }}

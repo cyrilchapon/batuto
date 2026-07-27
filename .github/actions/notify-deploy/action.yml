@@ -1,0 +1,84 @@
+name: Notify GitHub deployment
+description: >
+  Records a GitHub Deployment (with a success status pointing at the live
+  URL) for a platform deploy that already succeeded, and — when a PR
+  number is given — upserts a sticky comment on that PR with the same
+  URL. Shared by deploy-api and deploy-web so both platforms (Heroku,
+  Vercel) show up the same way in GitHub's Deployments UI and PR
+  comments, rather than each reimplementing this.
+
+inputs:
+  github-token:
+    description: GitHub token with deployments:write (and pull-requests:write when pr-number is set)
+    required: true
+  environment:
+    description: Deployment environment name, e.g. Production-api, pr-8-web
+    required: true
+  ref:
+    description: Git ref/sha the deployment points at
+    required: true
+  target-url:
+    description: The live URL to record as the deployment/comment target
+    required: true
+  description:
+    description: Short platform label (e.g. Heroku, Vercel), used in the deployment and PR comment
+    required: true
+  pr-number:
+    description: Pull request number to comment on; leave empty to skip commenting
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Create GitHub deployment and PR comment
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const { owner, repo } = context.repo;
+          const ref = '${{ inputs.ref }}';
+          const environment = '${{ inputs.environment }}';
+          const targetUrl = '${{ inputs.target-url }}';
+          const description = '${{ inputs.description }}';
+          const prNumber = '${{ inputs.pr-number }}';
+
+          const deployment = await github.rest.repos.createDeployment({
+            owner,
+            repo,
+            ref,
+            environment,
+            description,
+            auto_merge: false,
+            required_contexts: [],
+            transient_environment: environment.startsWith('pr-'),
+          });
+
+          if (deployment.data && deployment.data.id) {
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment_url: targetUrl,
+              description,
+            });
+          } else {
+            core.warning(`createDeployment returned status ${deployment.status} with no deployment id — skipping deployment status`);
+          }
+
+          if (prNumber) {
+            const marker = `<!-- deploy-comment: ${environment} -->`;
+            const body = `${marker}\n**${description}** deployed \`${environment}\`: ${targetUrl}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: Number(prNumber),
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: Number(prNumber), body });
+            }
+          }
