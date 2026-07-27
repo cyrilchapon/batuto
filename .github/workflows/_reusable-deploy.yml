@@ -1,0 +1,239 @@
+name: Reusable deploy (build -> release -> deploy)
+
+# Shared by deploy-production.yml (main) and deploy-staging.yml (dev) — the
+# two tiers are "exactly the same pipeline, different targets" per how this
+# was scoped. Not used directly by PR review apps (deploy-preview.yml),
+# which need a dynamically-created Heroku app and a linked Vercel preview,
+# not a static gh-environment/vars.HEROKU_APP_NAME.
+#
+# Three strict phases: build-api and build-web run fully in parallel;
+# release (database migrations, run directly against the real database —
+# not via Heroku's release-phase dyno mechanism, deliberately: it's a
+# plain, visible CI step, same pattern as db-checks.yml) only starts once
+# *both* builds have succeeded; deploy-api and deploy-web (the actual
+# platform deploys, via the .github/actions/deploy-{api,web} composite
+# actions — also reused by deploy-preview.yml) only start once the
+# release has succeeded, and run in parallel with each other. See
+# infra-and-envs.md's "Imperative deploys" section.
+on:
+  workflow_call:
+    inputs:
+      gh-environment:
+        description: GitHub Environment to scope vars/secrets to (Production | Staging)
+        required: true
+        type: string
+      vercel-prod:
+        description: Whether this is a Vercel production deploy (true) or a preview deploy (false)
+        required: true
+        type: boolean
+      doppler-config:
+        description: batuto-db Doppler config to pull the real BASE_DATABASE_URL from for migrations (dev | prd)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  # --- Build (parallel) ---
+
+  build-api:
+    name: Build API image (Docker)
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.gh-environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Log in to Heroku Container Registry
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku container:login
+
+      - name: Build image
+        env:
+          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
+        run: docker build -t "registry.heroku.com/$HEROKU_APP_NAME/web" -f apps/api/Dockerfile .
+
+      - name: Push image
+        env:
+          HEROKU_APP_NAME: ${{ vars.HEROKU_APP_NAME }}
+        run: docker push "registry.heroku.com/$HEROKU_APP_NAME/web"
+
+  build-web:
+    name: Build web (Vercel prebuilt)
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.gh-environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # `vercel` is a real, committed devDependency (both root and
+      # apps/web package.json — this job and deploy-web's own job each
+      # invoke it from a different cwd, see below), installed by this
+      # step — not a global npm install. This repo uses yarn
+      # exclusively, everywhere; see infra-and-envs.md's "Package
+      # manager: yarn only, nothing global" section for why.
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # working-directory: apps/web here is load-bearing for @vercel/
+      # remix-builder specifically, not just a style choice — confirmed
+      # by inspecting a real build artifact. The build itself always
+      # writes apps/web/build/{client,server} (turbo runs the build
+      # script from within the apps/web workspace regardless of where
+      # `turbo` itself was invoked from), and @vercel/remix-builder's
+      # zero-config detection looks for those directories *relative to
+      # cwd*, not adjusted by the project's Root Directory setting. When
+      # this ran from the repo root instead, the builder silently
+      # produced a static-only .vercel/output with no server function at
+      # all — no error, just a broken deployment (every route 404ing in
+      # production, `config.json` routing to a function that was never
+      # generated). Deploying instead is what needs to run from the repo
+      # root — see deploy-web/action.yml's comment for that half.
+      - name: Pull Vercel project settings and env vars
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: yarn vercel pull --yes --environment=${{ inputs.vercel-prod && 'production' || 'preview' }} --token="$VERCEL_TOKEN"
+
+      - name: Build
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: yarn vercel build ${{ inputs.vercel-prod && '--prod' || '' }} --token="$VERCEL_TOKEN"
+
+      # Unofficial, temporary workaround for a real @vercel/react-router
+      # / react-router v8 incompatibility — see the script's own header
+      # comment and infra-and-envs.md's "Vercel React Router preset"
+      # section for the full writeup. `vercel build` above silently
+      # produces a static-only .vercel/output with no server function
+      # at all under react-router v8; this hand-creates the missing
+      # function directories from the already-correct config.json and
+      # the real compiled server bundle. No credentials needed — pure
+      # local file manipulation plus an esbuild bundle.
+      - name: Fix up Vercel function output (react-router v8 workaround)
+        working-directory: apps/web
+        run: node scripts/fix-vercel-functions.mjs
+
+      # project.json (just projectId/orgId, no secrets) travels with the
+      # output so the deploy job has a real local Vercel project link —
+      # see deploy-web/action.yml's comment for why that's required.
+      # include-hidden-files: true is required — .vercel/output/functions/
+      # */.vc-config.json (the fix-up script's function config, dotfile
+      # by Build Output API convention) would otherwise be silently
+      # dropped by upload-artifact's default hidden-file exclusion,
+      # confirmed via a real deploy failure ("Could not load function
+      # config"). project.json isn't itself dot-prefixed, so it was
+      # never affected by this.
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output-${{ inputs.gh-environment }}
+          path: |
+            apps/web/.vercel/output
+            apps/web/.vercel/project.json
+          include-hidden-files: true
+          retention-days: 1
+
+  # --- Release ---
+  # Waits on *both* builds — don't run migrations before knowing the web
+  # build even works. Runs migrations directly against the real database
+  # from this job (same yarn workspace @batuto/db migrate:deploy pattern
+  # db-checks.yml already uses), not through Heroku's release-phase dyno —
+  # a plain, visible CI step rather than something buried in a dyno's log
+  # stream.
+
+  release:
+    name: Run database migrations
+    runs-on: ubuntu-latest
+    needs: [build-api, build-web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-db
+          doppler-config: ${{ inputs.doppler-config }}
+
+      - name: Apply database migrations
+        run: yarn workspace @batuto/db migrate:deploy
+        env:
+          DATABASE_URL: ${{ steps.doppler.outputs.BASE_DATABASE_URL }}
+
+  # --- Deploy (parallel) ---
+  # Both wait on release succeeding; neither waits on the other. Both call
+  # the shared .github/actions/deploy-{api,web} composite actions — same
+  # actions deploy-preview.yml calls, just sequentially there instead of
+  # in parallel.
+
+  deploy-api:
+    name: Deploy API to Heroku
+    runs-on: ubuntu-latest
+    needs: release
+    environment: ${{ inputs.gh-environment }}
+    steps:
+      # Required even though this job reads no repo files itself — a
+      # local composite action (`uses: ./...`) only resolves once the
+      # repo containing it is checked out.
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy API
+        uses: ./.github/actions/deploy-api
+        with:
+          heroku-api-key: ${{ secrets.HEROKU_API_KEY }}
+          heroku-app-name: ${{ vars.HEROKU_APP_NAME }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: ${{ format('{0}-api', inputs.gh-environment) }}
+
+  deploy-web:
+    name: Deploy web to Vercel
+    runs-on: ubuntu-latest
+    needs: release
+    environment: ${{ inputs.gh-environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy web
+        uses: ./.github/actions/deploy-web
+        with:
+          artifact-name: vercel-output-${{ inputs.gh-environment }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+          production: ${{ inputs.vercel-prod }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: ${{ format('{0}-web', inputs.gh-environment) }}

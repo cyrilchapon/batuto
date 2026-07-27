@@ -1,0 +1,414 @@
+name: Deploy PR review app
+
+# Imperative, CI-driven review apps for any PR targeting dev: a persistent
+# (for the PR's lifetime) Neon database clone, an ephemeral Heroku app,
+# and a Vercel preview pointed at that Heroku app's URL. Torn down on PR
+# close. See infra-and-envs.md's "Imperative deploys" section.
+#
+# Same three strict phases as _reusable-deploy.yml: build-api and
+# build-web run fully in parallel (build-web doesn't need build-api to
+# finish — the Heroku app's URL is deterministic from the PR number, no
+# lookup needed); release (migrations against this PR's own Neon clone,
+# run directly from CI, not through Heroku's release-phase mechanism —
+# same reasoning as the reusable pipeline) only starts once neon-branch,
+# build-api, AND build-web have all succeeded. deploy-api/deploy-web call
+# the same .github/actions/deploy-{api,web} composite actions
+# _reusable-deploy.yml uses, but sequentially here rather than in
+# parallel: deploy-web waits on deploy-api, and a final `link-cors` step
+# waits on deploy-web, because the web preview's real URL is only known
+# after it actually deploys (the API's URL is deterministic in advance,
+# but the reverse isn't).
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  # --- Build (parallel) ---
+
+  # Fail-fast only: verifies the branch can actually be created/reused
+  # early, in parallel with the builds. Its own output isn't used anywhere
+  # — release and deploy-api each call .github/actions/neon-pr-branch
+  # again themselves (fast, idempotent reuse by this point) rather than
+  # reading a job-level output here, because GitHub Actions silently
+  # drops masked values (this action's connection-string outputs embed a
+  # password) from `needs.<job>.outputs` — confirmed via a real CI
+  # failure ("Skip output 'database_url' since it may contain secret").
+  # See the action's own comments for the full explanation.
+  neon-branch:
+    name: Create or reuse PR database branch
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Create or reuse Neon branch
+        uses: ./.github/actions/neon-pr-branch
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+
+  build-api:
+    name: Build API image (Docker)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      # Container Registry pushes require the app to already exist —
+      # create it (idempotent: skip if a PR re-push already created it).
+      # --stack container is required at creation time — a plain
+      # `apps:create` defaults to Heroku's buildpack stack (heroku-24),
+      # which `container:push`/`container:release` (used later in this
+      # job and by deploy-api) refuse to touch ("This command is for
+      # Docker apps only"). --region eu matches the rest of the fleet
+      # (apps:create defaults to us otherwise). Adding it to the
+      # batuto-api pipeline's review stage is create-only too — re-adding
+      # an already-coupled app on a PR re-push isn't idempotent the same
+      # way apps:create is.
+      - name: Ensure Heroku review app exists
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
+        run: |
+          if heroku apps:info --app "$APP_NAME" >/dev/null 2>&1; then
+            echo "Heroku app $APP_NAME already exists, reusing it"
+          else
+            heroku apps:create "$APP_NAME" --stack container --region eu
+            heroku pipelines:add batuto-api --app "$APP_NAME" --stage review
+          fi
+
+      - name: Log in to Heroku Container Registry
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku container:login
+
+      - name: Build image
+        env:
+          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
+        run: docker build -t "registry.heroku.com/$APP_NAME/web" -f apps/api/Dockerfile .
+
+      - name: Push image
+        env:
+          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
+        run: docker push "registry.heroku.com/$APP_NAME/web"
+
+  build-web:
+    name: Build web (Vercel prebuilt)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    # vars.VERCEL_ORG_ID/vars.VERCEL_PROJECT_ID are repository-level now
+    # (they never varied by environment), so this isn't load-bearing for
+    # them — kept for GitHub's Preview deployment visibility/protection
+    # rules.
+    environment: Preview
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # `vercel` is a real, committed devDependency (both root and
+      # apps/web package.json — this job and deploy-web's own job each
+      # invoke it from a different cwd, see below), installed by this
+      # step — not a global npm install. This repo uses yarn
+      # exclusively, everywhere; see infra-and-envs.md's "Package
+      # manager: yarn only, nothing global" section for why.
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # working-directory: apps/web here is load-bearing for @vercel/
+      # remix-builder specifically, not just a style choice — confirmed
+      # by inspecting a real build artifact. The build itself always
+      # writes apps/web/build/{client,server} (turbo runs the build
+      # script from within the apps/web workspace regardless of where
+      # `turbo` itself was invoked from), and @vercel/remix-builder's
+      # zero-config detection looks for those directories *relative to
+      # cwd*, not adjusted by the project's Root Directory setting. When
+      # this ran from the repo root instead, the builder silently
+      # produced a static-only .vercel/output with no server function at
+      # all — no error, just a broken deployment (every route 404ing in
+      # production, `config.json` routing to a function that was never
+      # generated). Deploying instead is what needs to run from the repo
+      # root — see deploy-web/action.yml's comment for that half.
+      - name: Pull Vercel project settings and env vars
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: yarn vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      # This is the actual web<->api review-app link: override whatever
+      # static VITE_API_URL Vercel's Preview scope has configured with
+      # this PR's own API review app. The Heroku app's URL is
+      # deterministic from the PR number alone, so this doesn't need to
+      # wait on build-api actually finishing. Strip-then-append rather
+      # than relying on "last line wins" in a dotenv file, which isn't a
+      # guaranteed parsing rule.
+      - name: Point preview build at its own API review app
+        working-directory: apps/web
+        env:
+          API_URL: https://batuto-api-pr-${{ github.event.pull_request.number }}.herokuapp.com
+        run: |
+          ENV_FILE=.vercel/.env.preview.local
+          grep -v '^VITE_API_URL=' "$ENV_FILE" > "$ENV_FILE.tmp" || true
+          mv "$ENV_FILE.tmp" "$ENV_FILE"
+          echo "VITE_API_URL=$API_URL" >> "$ENV_FILE"
+
+      - name: Build
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: yarn vercel build --token="$VERCEL_TOKEN"
+
+      # Unofficial, temporary workaround for a real @vercel/react-router
+      # / react-router v8 incompatibility — see the script's own header
+      # comment and infra-and-envs.md's "Vercel React Router preset"
+      # section for the full writeup. `vercel build` above silently
+      # produces a static-only .vercel/output with no server function
+      # at all under react-router v8; this hand-creates the missing
+      # function directories from the already-correct config.json and
+      # the real compiled server bundle. No credentials needed — pure
+      # local file manipulation plus an esbuild bundle.
+      - name: Fix up Vercel function output (react-router v8 workaround)
+        working-directory: apps/web
+        run: node scripts/fix-vercel-functions.mjs
+
+      # project.json (just projectId/orgId, no secrets) travels with the
+      # output so the deploy job has a real local Vercel project link —
+      # see deploy-web/action.yml's comment for why that's required.
+      # include-hidden-files: true is required — .vercel/output/functions/
+      # */.vc-config.json (the fix-up script's function config, dotfile
+      # by Build Output API convention) would otherwise be silently
+      # dropped by upload-artifact's default hidden-file exclusion,
+      # confirmed via a real deploy failure ("Could not load function
+      # config"). project.json isn't itself dot-prefixed, so it was
+      # never affected by this.
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output-pr-${{ github.event.pull_request.number }}
+          path: |
+            apps/web/.vercel/output
+            apps/web/.vercel/project.json
+          include-hidden-files: true
+          retention-days: 1
+
+  # --- Release ---
+  # Waits on neon-branch (so the branch is guaranteed to exist by the time
+  # this re-fetches it) and *both* builds — same reasoning as
+  # _reusable-deploy.yml: don't run migrations before knowing the web
+  # build even works. Runs migrations directly against this PR's own
+  # Neon clone, never the shared dev database.
+
+  release:
+    name: Run database migrations (PR clone)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    needs: [neon-branch, build-api, build-web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Re-fetches this PR's Neon branch details rather than reading
+      # neon-branch's output — see that job's comment for why.
+      - name: Get PR database branch
+        id: neon
+        uses: ./.github/actions/neon-pr-branch
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+
+      - name: Apply database migrations
+        run: yarn workspace @batuto/db migrate:deploy
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.database-url }}
+
+  # --- Deploy ---
+  # Sequential, not parallel, unlike production/staging: deploy-web needs
+  # deploy-api's app to actually be live and configured before it makes
+  # sense to expose a web preview pointed at it, and the final link-cors
+  # step needs deploy-web's real output URL (only known after it deploys).
+
+  deploy-api:
+    name: Deploy API review app to Heroku
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    needs: [neon-branch, release]
+    steps:
+      # Required even though the steps below don't read repo files
+      # directly — a local composite action (`uses: ./...`) only resolves
+      # once the repo containing it is checked out.
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      # Re-fetches this PR's Neon branch details rather than reading
+      # neon-branch's output — see that job's comment for why.
+      - name: Get PR database branch
+        id: neon
+        uses: ./.github/actions/neon-pr-branch
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+
+      - name: Fetch Doppler secrets (app runtime config)
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-api
+          doppler-config: dev
+
+      # Everything from batuto-api's dev config, except DATABASE_URL (this
+      # PR's own Neon clone, never the shared dev database) and WEB_URL
+      # (unknown yet — the web review app doesn't exist until deploy-web
+      # runs next. It defaults to a harmless value; `link-cors` patches in
+      # the real preview URL once it exists). Review-app-specific, so it
+      # stays here rather than in the shared deploy-api action — staging
+      # and production never set config vars from CI at all, Doppler's
+      # own Heroku integration handles that for their static apps.
+      - name: Set config vars on the review app
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
+          DATABASE_URL: ${{ steps.neon.outputs.database-url }}
+          CLERK_SECRET_KEY: ${{ steps.doppler.outputs.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ steps.doppler.outputs.CLERK_PUBLISHABLE_KEY }}
+        run: |
+          heroku config:set \
+            DATABASE_URL="$DATABASE_URL" \
+            CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+            CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
+            --app "$APP_NAME"
+
+      - name: Deploy API
+        uses: ./.github/actions/deploy-api
+        with:
+          heroku-api-key: ${{ secrets.HEROKU_API_KEY }}
+          heroku-app-name: batuto-api-pr-${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: pr-${{ github.event.pull_request.number }}-api
+          pr-number: ${{ github.event.pull_request.number }}
+
+  deploy-web:
+    name: Deploy web review app to Vercel
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    environment: Preview
+    outputs:
+      web_url: ${{ steps.deploy.outputs.preview-url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Deploy web
+        id: deploy
+        uses: ./.github/actions/deploy-web
+        with:
+          artifact-name: vercel-output-pr-${{ github.event.pull_request.number }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+          production: "false"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: pr-${{ github.event.pull_request.number }}-web
+          pr-number: ${{ github.event.pull_request.number }}
+
+  link-cors:
+    name: Point the API review app back at its web preview URL
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    needs: deploy-web
+    steps:
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      # Closes the loop: the API review app booted with the default
+      # WEB_URL (deploy-api), and now gets the real preview URL for CORS.
+      # Heroku restarts the dyno on config var change — no redeploy
+      # needed.
+      - name: Set WEB_URL on the API review app
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
+          WEB_URL: ${{ needs.deploy-web.outputs.web_url }}
+        run: heroku config:set WEB_URL="$WEB_URL" --app "$APP_NAME"
+
+  teardown:
+    name: Tear down PR review app
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      # Needed so `corepack enable` below resolves the pinned yarn
+      # version (packageManager in the repo's own package.json) rather
+      # than some default — required for `yarn dlx` further down.
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Destroy Heroku review app
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
+        run: |
+          if heroku apps:info --app "$APP_NAME" >/dev/null 2>&1; then
+            heroku apps:destroy "$APP_NAME" --confirm "$APP_NAME"
+          else
+            echo "$APP_NAME does not exist, nothing to destroy"
+          fi
+
+      - name: Fetch Doppler secrets
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          doppler-project: batuto-db
+          doppler-config: dev
+
+      # neonctl accepts a branch name directly (no id lookup needed,
+      # unlike neondatabase/delete-branch-action which requires branch_id
+      # and none is known at close time without cross-run state).
+      - name: Delete Neon PR branch
+        env:
+          NEON_API_KEY: ${{ steps.doppler.outputs.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ steps.doppler.outputs.NEON_PROJECT_ID }}
+        run: yarn dlx neonctl@latest branches delete "pr-${{ github.event.pull_request.number }}" --project-id "$NEON_PROJECT_ID" || echo "Branch not found, nothing to delete"

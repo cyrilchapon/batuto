@@ -1,0 +1,104 @@
+name: Deploy web to Vercel
+description: >
+  Downloads a prebuilt Vercel build artifact (produced by a prior
+  `vercel build` step) and deploys it via `vercel deploy --prebuilt` —
+  Vercel never sees or builds from source. Assumes release (database
+  migrations) already succeeded.
+
+inputs:
+  artifact-name:
+    description: Name of the build-output artifact uploaded by the build step
+    required: true
+  vercel-token:
+    required: true
+  vercel-org-id:
+    required: true
+  vercel-project-id:
+    required: true
+  production:
+    description: "'true' for a Vercel production deploy, 'false' for preview"
+    required: false
+    default: "false"
+  github-token:
+    description: GitHub token, for creating a GitHub Deployment and PR comment
+    required: true
+  deployment-environment:
+    description: GitHub Deployment environment name, e.g. Production-web, pr-8-web
+    required: true
+  pr-number:
+    description: Pull request number to comment on; leave empty outside PR review deploys
+    required: false
+    default: ""
+
+outputs:
+  preview-url:
+    description: The deployed Vercel URL
+    value: ${{ steps.deploy.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: 22
+
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    # `vercel` is a real, committed devDependency (root package.json) —
+    # not a global npm install. This repo uses yarn exclusively,
+    # everywhere; see infra-and-envs.md's "Package manager: yarn only,
+    # nothing global" section for why.
+    - name: Install dependencies
+      shell: bash
+      run: yarn install --immutable
+
+    # Downloads into .vercel at the repo root (not apps/web/.vercel): the
+    # build job runs vercel pull/build from apps/web (see its own
+    # comment for why), so .vercel/output and .vercel/project.json land
+    # at apps/web/.vercel/ there — this download reshapes the artifact
+    # to sit at the repo root instead, matching where this step's own
+    # `vercel deploy` needs to find them (see below).
+    - name: Download build output
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: .vercel
+
+    # Deliberately run from the repo root, not apps/web. Two earlier,
+    # real CI failures on PR #8 (a nonexistent apps/web/apps/web path,
+    # then a failure to find .vercel/output at all) both came from
+    # fighting Vercel's own Root Directory resolution by cd'ing into
+    # apps/web ourselves before invoking the CLI. Per Vercel's own
+    # monorepo docs (vercel.com/docs/monorepos): "Ensure you're in the
+    # root directory of your monorepo. Vercel CLI should not be invoked
+    # from the subdirectory." Root Directory (apps/web, configured
+    # server-side on the batuto-web project) is what tells vercel where
+    # the app lives — this command should run from repo root and let
+    # Vercel apply that offset itself, not have us apply it a second
+    # time via cwd. Unlike this step, the build job's vercel pull/build
+    # genuinely do need to run from apps/web (a separate, unrelated
+    # constraint — see that job's own comment), which is exactly why
+    # this step can't just copy its cwd convention.
+    - name: Deploy prebuilt to Vercel
+      id: deploy
+      shell: bash
+      env:
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+      run: |
+        url=$(yarn vercel deploy --prebuilt ${{ inputs.production == 'true' && '--prod' || '' }} --token="$VERCEL_TOKEN")
+        echo "url=$url" >> "$GITHUB_OUTPUT"
+
+    - name: Notify GitHub deployment
+      uses: ./.github/actions/notify-deploy
+      with:
+        github-token: ${{ inputs.github-token }}
+        environment: ${{ inputs.deployment-environment }}
+        ref: ${{ github.sha }}
+        target-url: ${{ steps.deploy.outputs.url }}
+        description: Vercel
+        pr-number: ${{ inputs.pr-number }}

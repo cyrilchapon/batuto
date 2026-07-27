@@ -1,0 +1,30 @@
+name: Deploy to staging
+
+# Imperative, CI-driven deploy on every push to dev — not Vercel's or
+# Heroku's own git-push auto-deploy. "dev" is today's trunk, described as
+# staging-like: same pipeline as production, different targets (Heroku's
+# staging app under the Staging GitHub Environment; Vercel's Preview
+# target, aliased to a stable domain via a one-time Vercel dashboard
+# setting rather than a paid custom environment). See infra-and-envs.md's
+# "Imperative deploys" section.
+on:
+  push:
+    branches: [dev]
+
+# Redeclared here, not just in _reusable-deploy.yml: for workflow_call, the
+# effective token permissions are the intersection of what the callee
+# requests and what the caller allows, so this can't rely on the reusable
+# workflow's own permissions: block alone.
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Deploy
+    uses: ./.github/workflows/_reusable-deploy.yml
+    with:
+      gh-environment: Staging
+      vercel-prod: false
+      doppler-config: dev
+    secrets: inherit
