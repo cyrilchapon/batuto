@@ -79,6 +79,26 @@ function destToFunctionName(dest) {
   return name;
 }
 
+// A function directory existing isn't enough — vercel build's own
+// materialization has also been observed writing a *complete-looking*
+// .func directory (a real .vc-config.json, no invalid characters) whose
+// `handler` field points at a filename that doesn't match what
+// react-router v8's Vite Environment API actually produces (a real CI
+// failure: "File does not exist: apps/web/build/server/nodejs_.../
+// server-index.mjs" — the real file is index.js, not server-index.mjs).
+// Confirm the handler file genuinely exists before trusting an
+// already-there function directory.
+function isValidExistingFunction(funcDir) {
+  const configPath = join(funcDir, ".vc-config.json");
+  if (!existsSync(configPath)) return false;
+  try {
+    const config = readJson(configPath);
+    return typeof config.handler === "string" && existsSync(join(funcDir, config.handler));
+  } catch {
+    return false;
+  }
+}
+
 // Recursively removes anything under `dir` whose name contains a
 // character invalid for artifact upload — vercel build's own broken
 // wildcard-route materialization is the only thing that produces these
@@ -130,7 +150,7 @@ async function main() {
   }
 
   const missing = [...neededNames].filter(
-    (name) => !existsSync(join(FUNCTIONS_DIR, `${name}.func`)),
+    (name) => !isValidExistingFunction(join(FUNCTIONS_DIR, `${name}.func`)),
   );
   if (missing.length === 0) {
     console.log(
@@ -152,6 +172,12 @@ async function main() {
   const bundle = serverBundles[0];
   const primaryName = missing[0];
   const primaryFuncDir = join(FUNCTIONS_DIR, `${primaryName}.func`);
+  // Clear first — vercel build may have already left a broken (but
+  // directory-existing) attempt here, e.g. one with a real
+  // .vc-config.json pointing at a handler file that doesn't exist. A
+  // stray leftover file from that attempt sitting next to ours would be
+  // harmless at best, but there's no reason to risk it.
+  rmSync(primaryFuncDir, { recursive: true, force: true });
   mkdirSync(primaryFuncDir, { recursive: true });
 
   // Adapted from @vercel/remix-builder's own defaults/server-react-router.mjs
@@ -225,6 +251,7 @@ export default typeof build === 'function'
   // MB of duplicated bundle is a small price for not gambling on that.
   for (const name of missing.slice(1)) {
     const funcDir = join(FUNCTIONS_DIR, `${name}.func`);
+    rmSync(funcDir, { recursive: true, force: true }); // same reasoning as clearing primaryFuncDir above
     cpSync(primaryFuncDir, funcDir, { recursive: true });
   }
 
