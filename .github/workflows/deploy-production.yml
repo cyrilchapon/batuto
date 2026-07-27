@@ -3,13 +3,6 @@ name: Deploy to production
 # Imperative, CI-driven deploy on every push to main — not Vercel's or
 # Heroku's own git-push auto-deploy. See infra-and-envs.md's "Imperative
 # deploys" section.
-#
-# Known gap, confirmed via a real failed run (PR #10, 2026-07-27, "Connection
-# url is empty"): batuto-db's Doppler `prd` config still has no
-# BASE_DATABASE_URL (see infra-and-envs.md's Doppler section) — the release
-# job's migration step fails until it's populated with a real one. Tracked
-# as BAT-34. Not something this workflow can fix; flagging so a failure
-# here isn't a surprise.
 on:
   push:
     branches: [main]
