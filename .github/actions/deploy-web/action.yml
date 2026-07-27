@@ -40,6 +40,15 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: apps/web/.vercel/output
 
+    # BetaHuhn/deploy-to-vercel-action spawns the `vercel` binary itself
+    # (Error: spawn vercel ENOENT without this) — it doesn't bundle or
+    # install its own copy. The build job installs the CLI too, but that
+    # doesn't carry over: build and deploy run in separate jobs (separate
+    # runners) so build's install never reaches this one.
+    - name: Install Vercel CLI
+      shell: bash
+      run: npm install --global vercel@latest
+
     - name: Deploy prebuilt to Vercel
       id: deploy
       uses: BetaHuhn/deploy-to-vercel-action@v1
