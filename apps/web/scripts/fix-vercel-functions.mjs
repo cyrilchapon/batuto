@@ -43,11 +43,19 @@ function readJson(path) {
 
 function destToFunctionName(dest) {
   if (!dest || dest.startsWith("/")) return null; // static file rewrite (prerendered route), not a function
-  // Order matters: "sign-in/*.data" must lose ".data" before the
-  // trailing "/*" strip, or it's left as "sign-in/*" instead of
-  // collapsing to the same "sign-in" name as "sign-in/*" itself.
-  const name = dest.replace(/\.data$/, "").replace(/\/\*$/, "");
-  return name || null;
+  // Vercel's `dest` templating uses a literal `*` as a positional
+  // placeholder for captured URL segments (seen in the wild: "sign-in/*",
+  // "sign-in/*.data") — the actual function identity is always the
+  // *first* path segment, with everything after it forwarded to that
+  // same function. Taking just the first segment, rather than trying to
+  // strip every specific suffix shape ("/*", "/*.data", ...), is robust
+  // to dest shapes this script hasn't been tested against — a prior
+  // version stripped known suffixes explicitly and still produced an
+  // invalid nested "sign-in/*.data.func" directory in a real CI run
+  // when the dest didn't exactly match what it expected.
+  const name = dest.split("/")[0];
+  if (!name || name.includes("*")) return null; // still not a safe path segment — skip rather than create something broken
+  return name;
 }
 
 async function main() {
