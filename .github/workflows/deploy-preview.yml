@@ -196,6 +196,13 @@ jobs:
       # project.json (just projectId/orgId, no secrets) travels with the
       # output so the deploy job has a real local Vercel project link —
       # see deploy-web/action.yml's comment for why that's required.
+      # include-hidden-files: true is required — .vercel/output/functions/
+      # */.vc-config.json (the fix-up script's function config, dotfile
+      # by Build Output API convention) would otherwise be silently
+      # dropped by upload-artifact's default hidden-file exclusion,
+      # confirmed via a real deploy failure ("Could not load function
+      # config"). project.json isn't itself dot-prefixed, so it was
+      # never affected by this.
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
@@ -203,6 +210,7 @@ jobs:
           path: |
             apps/web/.vercel/output
             apps/web/.vercel/project.json
+          include-hidden-files: true
           retention-days: 1
 
   # --- Release ---
