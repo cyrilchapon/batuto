@@ -48,18 +48,27 @@ runs:
       shell: bash
       run: npm install --global vercel@latest
 
-    # No .vercel/project.json here — only .vercel/output was uploaded by
-    # the build job. VERCEL_ORG_ID/VERCEL_PROJECT_ID env vars stand in for
-    # `vercel link`, same pattern the build job's `vercel pull`/`vercel
-    # build` steps already use. Deploying via plain CLI (rather than
-    # BetaHuhn/deploy-to-vercel-action) also avoids that action's own
-    # WORKING_DIRECTORY input, which doubled with Vercel's server-side
-    # Root Directory setting (both resolving to apps/web) and produced a
-    # nonexistent apps/web/apps/web path.
+    # Deliberately NOT working-directory: apps/web here, unlike the build
+    # job's vercel pull/build steps. Those work from apps/web because
+    # `vercel pull` first writes a local .vercel/project.json there,
+    # which vercel build then trusts as-is (cwd IS the project root,
+    # already linked — no server lookup needed). This step has no local
+    # project.json (only .vercel/output was downloaded, not project.json)
+    # — VERCEL_ORG_ID/VERCEL_PROJECT_ID env vars make vercel deploy
+    # fetch the project's settings from the API instead, which include
+    # its server-side Root Directory (apps/web). Vercel then looks for
+    # the prebuilt output at <cwd>/<rootDirectory>/.vercel/output. Run
+    # from repo root, that resolves to apps/web/.vercel/output — right
+    # where the artifact was downloaded. Running this from apps/web
+    # instead (as an earlier version of this action did) applies that
+    # same apps/web offset a second time, producing a nonexistent
+    # apps/web/apps/web path — confirmed via a real CI failure, twice,
+    # once through BetaHuhn/deploy-to-vercel-action's WORKING_DIRECTORY
+    # input and once through this step's own working-directory before
+    # this fix.
     - name: Deploy prebuilt to Vercel
       id: deploy
       shell: bash
-      working-directory: apps/web
       env:
         VERCEL_TOKEN: ${{ inputs.vercel-token }}
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
