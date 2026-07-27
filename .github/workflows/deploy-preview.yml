@@ -130,16 +130,22 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      # Deliberately run from the repo root, not apps/web — per Vercel's
-      # own monorepo docs ("Vercel CLI should not be invoked from the
-      # subdirectory"), Root Directory (apps/web, set server-side on the
-      # batuto-web project) is what tells every vercel command where the
-      # app actually lives; the CLI applies that offset itself. cd'ing
-      # into apps/web ourselves duplicates that offset instead of
-      # cooperating with it, which is what caused a real, repeated CI
-      # failure in the separate deploy job (a nonexistent
-      # apps/web/apps/web path) — see deploy-web/action.yml's comment.
+      # working-directory: apps/web here is load-bearing for @vercel/
+      # remix-builder specifically, not just a style choice — confirmed
+      # by inspecting a real build artifact. The build itself always
+      # writes apps/web/build/{client,server} (turbo runs the build
+      # script from within the apps/web workspace regardless of where
+      # `turbo` itself was invoked from), and @vercel/remix-builder's
+      # zero-config detection looks for those directories *relative to
+      # cwd*, not adjusted by the project's Root Directory setting. When
+      # this ran from the repo root instead, the builder silently
+      # produced a static-only .vercel/output with no server function at
+      # all — no error, just a broken deployment (every route 404ing in
+      # production, `config.json` routing to a function that was never
+      # generated). Deploying instead is what needs to run from the repo
+      # root — see deploy-web/action.yml's comment for that half.
       - name: Pull Vercel project settings and env vars
+        working-directory: apps/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
@@ -154,6 +160,7 @@ jobs:
       # than relying on "last line wins" in a dotenv file, which isn't a
       # guaranteed parsing rule.
       - name: Point preview build at its own API review app
+        working-directory: apps/web
         env:
           API_URL: https://batuto-api-pr-${{ github.event.pull_request.number }}.herokuapp.com
         run: |
@@ -163,6 +170,7 @@ jobs:
           echo "VITE_API_URL=$API_URL" >> "$ENV_FILE"
 
       - name: Build
+        working-directory: apps/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
@@ -177,8 +185,8 @@ jobs:
         with:
           name: vercel-output-pr-${{ github.event.pull_request.number }}
           path: |
-            .vercel/output
-            .vercel/project.json
+            apps/web/.vercel/output
+            apps/web/.vercel/project.json
           retention-days: 1
 
   # --- Release ---
