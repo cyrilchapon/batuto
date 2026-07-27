@@ -86,8 +86,16 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
+      # Deliberately run from the repo root, not apps/web — per Vercel's
+      # own monorepo docs ("Vercel CLI should not be invoked from the
+      # subdirectory"), Root Directory (apps/web, set server-side on the
+      # batuto-web project) is what tells every vercel command where the
+      # app actually lives; the CLI applies that offset itself. cd'ing
+      # into apps/web ourselves duplicates that offset instead of
+      # cooperating with it, which is what caused a real, repeated CI
+      # failure in the separate deploy job (a nonexistent
+      # apps/web/apps/web path) — see deploy-web/action.yml's comment.
       - name: Pull Vercel project settings and env vars
-        working-directory: apps/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
@@ -95,7 +103,6 @@ jobs:
         run: vercel pull --yes --environment=${{ inputs.vercel-prod && 'production' || 'preview' }} --token="$VERCEL_TOKEN"
 
       - name: Build
-        working-directory: apps/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
@@ -110,8 +117,8 @@ jobs:
         with:
           name: vercel-output-${{ inputs.gh-environment }}
           path: |
-            apps/web/.vercel/output
-            apps/web/.vercel/project.json
+            .vercel/output
+            .vercel/project.json
           retention-days: 1
 
   # --- Release ---

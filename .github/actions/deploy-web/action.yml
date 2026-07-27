@@ -38,41 +38,37 @@ outputs:
 runs:
   using: composite
   steps:
-    # Downloads into apps/web/.vercel (not just .../output): the build
-    # job's "Upload build output" step includes .vercel/project.json
-    # alongside .vercel/output specifically so this job gets a real,
-    # local Vercel project link, not just the build artifacts. See the
-    # comment on the deploy step below for why that link matters.
+    # Downloads into .vercel at the repo root (not apps/web/.vercel): the
+    # build job now runs every vercel command from the repo root too —
+    # see its own comment for why — so .vercel/output and
+    # .vercel/project.json both live at the repo root there, and this
+    # download just mirrors that same layout.
     - name: Download build output
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
-        path: apps/web/.vercel
+        path: .vercel
 
     - name: Install Vercel CLI
       shell: bash
       run: npm install --global vercel@latest
 
-    # working-directory: apps/web, same as the build job's vercel
-    # pull/build steps — and for the same reason those work: cwd has a
-    # local .vercel/project.json (downloaded above), so vercel deploy
-    # treats cwd as the already-linked project root and reads
-    # .vercel/output relative to it directly, no server lookup needed.
-    # Without a local project.json, VERCEL_ORG_ID/VERCEL_PROJECT_ID env
-    # vars make vercel deploy re-derive the project's Root Directory
-    # (apps/web) from the API instead — and depending on cwd at that
-    # point, that either doubles onto an already-apps/web cwd (a
-    # nonexistent apps/web/apps/web path) or, run from repo root,
-    # resolves the project directory correctly but then still looks for
-    # prebuilt output at plain .vercel/output relative to cwd — repo
-    # root, not apps/web — and fails to find it there either. Both
-    # confirmed via real CI failures; carrying the real project.json
-    # forward sidesteps the inconsistency entirely instead of chasing
-    # cwd math that has to match undocumented CLI internals.
+    # Deliberately run from the repo root, not apps/web. Two earlier,
+    # real CI failures on PR #8 (a nonexistent apps/web/apps/web path,
+    # then a failure to find .vercel/output at all) both came from
+    # fighting Vercel's own Root Directory resolution by cd'ing into
+    # apps/web ourselves before invoking the CLI. Per Vercel's own
+    # monorepo docs (vercel.com/docs/monorepos): "Ensure you're in the
+    # root directory of your monorepo. Vercel CLI should not be invoked
+    # from the subdirectory." Root Directory (apps/web, configured
+    # server-side on the batuto-web project) is what tells vercel where
+    # the app lives — every vercel command, including this one, should
+    # run from repo root and let Vercel apply that offset itself, not
+    # have us apply it a second time via cwd. This matches how the build
+    # job now runs its own vercel pull/build steps.
     - name: Deploy prebuilt to Vercel
       id: deploy
       shell: bash
-      working-directory: apps/web
       env:
         VERCEL_TOKEN: ${{ inputs.vercel-token }}
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
