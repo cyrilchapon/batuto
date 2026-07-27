@@ -40,11 +40,27 @@ runs:
     # not the registry — the caller's job needs to be the one build-api
     # pushed from, or has to have pulled the image itself before calling
     # this action (see `docker pull` below).
+    #
+    # registry.heroku.com has been observed to stall mid-pull (real CI
+    # runs sat past an hour with no output and no error, eventually only
+    # ending via GitHub Actions' own 6-hour job timeout). Bounding each
+    # attempt with `timeout` and retrying a few times turns that into a
+    # bounded, visible failure instead of a silent multi-hour hang.
     - name: Pull built image
       shell: bash
       env:
         HEROKU_APP_NAME: ${{ inputs.heroku-app-name }}
-      run: docker pull "registry.heroku.com/$HEROKU_APP_NAME/web"
+      run: |
+        image="registry.heroku.com/$HEROKU_APP_NAME/web"
+        for attempt in 1 2 3; do
+          if timeout 5m docker pull "$image"; then
+            exit 0
+          fi
+          echo "::warning::docker pull attempt $attempt for $image timed out or failed"
+          sleep 10
+        done
+        echo "::error::docker pull for $image failed after 3 attempts"
+        exit 1
 
     # `container:release` is Heroku's own CLI command name for "deploy
     # this image" — every Heroku deploy creates a Release object, that's

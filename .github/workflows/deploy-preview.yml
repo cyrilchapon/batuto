@@ -265,6 +265,11 @@ jobs:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     needs: [neon-branch, release]
+    # Safety net, not the fix itself (see deploy-api/action.yml's own
+    # retry/timeout around `docker pull`) — bounds the whole job so an
+    # unexpected hang anywhere in it fails within minutes instead of
+    # silently running for GitHub Actions' default 6-hour job timeout.
+    timeout-minutes: 15
     steps:
       # Required even though the steps below don't read repo files
       # directly — a local composite action (`uses: ./...`) only resolves
