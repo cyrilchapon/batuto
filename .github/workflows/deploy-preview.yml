@@ -180,6 +180,19 @@ jobs:
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: yarn vercel build --token="$VERCEL_TOKEN"
 
+      # Unofficial, temporary workaround for a real @vercel/react-router
+      # / react-router v8 incompatibility — see the script's own header
+      # comment and infra-and-envs.md's "Vercel React Router preset"
+      # section for the full writeup. `vercel build` above silently
+      # produces a static-only .vercel/output with no server function
+      # at all under react-router v8; this hand-creates the missing
+      # function directories from the already-correct config.json and
+      # the real compiled server bundle. No credentials needed — pure
+      # local file manipulation plus an esbuild bundle.
+      - name: Fix up Vercel function output (react-router v8 workaround)
+        working-directory: apps/web
+        run: node scripts/fix-vercel-functions.mjs
+
       # project.json (just projectId/orgId, no secrets) travels with the
       # output so the deploy job has a real local Vercel project link —
       # see deploy-web/action.yml's comment for why that's required.
