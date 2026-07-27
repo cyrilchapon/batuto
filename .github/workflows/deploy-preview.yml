@@ -71,12 +71,22 @@ jobs:
       # `apps:create` defaults to Heroku's buildpack stack (heroku-24),
       # which `container:push`/`container:release` (used later in this
       # job and by deploy-api) refuse to touch ("This command is for
-      # Docker apps only").
+      # Docker apps only"). --region eu matches the rest of the fleet
+      # (apps:create defaults to us otherwise). Adding it to the
+      # batuto-api pipeline's review stage is create-only too — re-adding
+      # an already-coupled app on a PR re-push isn't idempotent the same
+      # way apps:create is.
       - name: Ensure Heroku review app exists
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
-        run: heroku apps:info --app "$APP_NAME" >/dev/null 2>&1 || heroku apps:create "$APP_NAME" --stack container
+        run: |
+          if heroku apps:info --app "$APP_NAME" >/dev/null 2>&1; then
+            echo "Heroku app $APP_NAME already exists, reusing it"
+          else
+            heroku apps:create "$APP_NAME" --stack container --region eu
+            heroku pipelines:add batuto-api --app "$APP_NAME" --stage review
+          fi
 
       - name: Log in to Heroku Container Registry
         env:
