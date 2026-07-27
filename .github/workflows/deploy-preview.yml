@@ -163,11 +163,16 @@ jobs:
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: vercel build --token="$VERCEL_TOKEN"
 
+      # project.json (just projectId/orgId, no secrets) travels with the
+      # output so the deploy job has a real local Vercel project link —
+      # see deploy-web/action.yml's comment for why that's required.
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
           name: vercel-output-pr-${{ github.event.pull_request.number }}
-          path: apps/web/.vercel/output
+          path: |
+            apps/web/.vercel/output
+            apps/web/.vercel/project.json
           retention-days: 1
 
   # --- Release ---

@@ -38,37 +38,41 @@ outputs:
 runs:
   using: composite
   steps:
+    # Downloads into apps/web/.vercel (not just .../output): the build
+    # job's "Upload build output" step includes .vercel/project.json
+    # alongside .vercel/output specifically so this job gets a real,
+    # local Vercel project link, not just the build artifacts. See the
+    # comment on the deploy step below for why that link matters.
     - name: Download build output
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
-        path: apps/web/.vercel/output
+        path: apps/web/.vercel
 
     - name: Install Vercel CLI
       shell: bash
       run: npm install --global vercel@latest
 
-    # Deliberately NOT working-directory: apps/web here, unlike the build
-    # job's vercel pull/build steps. Those work from apps/web because
-    # `vercel pull` first writes a local .vercel/project.json there,
-    # which vercel build then trusts as-is (cwd IS the project root,
-    # already linked — no server lookup needed). This step has no local
-    # project.json (only .vercel/output was downloaded, not project.json)
-    # — VERCEL_ORG_ID/VERCEL_PROJECT_ID env vars make vercel deploy
-    # fetch the project's settings from the API instead, which include
-    # its server-side Root Directory (apps/web). Vercel then looks for
-    # the prebuilt output at <cwd>/<rootDirectory>/.vercel/output. Run
-    # from repo root, that resolves to apps/web/.vercel/output — right
-    # where the artifact was downloaded. Running this from apps/web
-    # instead (as an earlier version of this action did) applies that
-    # same apps/web offset a second time, producing a nonexistent
-    # apps/web/apps/web path — confirmed via a real CI failure, twice,
-    # once through BetaHuhn/deploy-to-vercel-action's WORKING_DIRECTORY
-    # input and once through this step's own working-directory before
-    # this fix.
+    # working-directory: apps/web, same as the build job's vercel
+    # pull/build steps — and for the same reason those work: cwd has a
+    # local .vercel/project.json (downloaded above), so vercel deploy
+    # treats cwd as the already-linked project root and reads
+    # .vercel/output relative to it directly, no server lookup needed.
+    # Without a local project.json, VERCEL_ORG_ID/VERCEL_PROJECT_ID env
+    # vars make vercel deploy re-derive the project's Root Directory
+    # (apps/web) from the API instead — and depending on cwd at that
+    # point, that either doubles onto an already-apps/web cwd (a
+    # nonexistent apps/web/apps/web path) or, run from repo root,
+    # resolves the project directory correctly but then still looks for
+    # prebuilt output at plain .vercel/output relative to cwd — repo
+    # root, not apps/web — and fails to find it there either. Both
+    # confirmed via real CI failures; carrying the real project.json
+    # forward sidesteps the inconsistency entirely instead of chasing
+    # cwd math that has to match undocumented CLI internals.
     - name: Deploy prebuilt to Vercel
       id: deploy
       shell: bash
+      working-directory: apps/web
       env:
         VERCEL_TOKEN: ${{ inputs.vercel-token }}
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
