@@ -33,8 +33,6 @@ on:
 
 permissions:
   contents: read
-  deployments: write
-  pull-requests: write
 
 jobs:
   # --- Build (parallel) ---
@@ -187,7 +185,6 @@ jobs:
         uses: ./.github/actions/deploy-web
         with:
           artifact-name: vercel-output-${{ inputs.gh-environment }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}

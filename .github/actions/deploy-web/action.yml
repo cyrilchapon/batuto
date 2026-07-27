@@ -9,9 +9,6 @@ inputs:
   artifact-name:
     description: Name of the build-output artifact uploaded by the build step
     required: true
-  github-token:
-    description: GitHub token, for creating a GitHub Deployment and PR comment
-    required: true
   vercel-token:
     required: true
   vercel-org-id:
@@ -26,37 +23,37 @@ inputs:
 outputs:
   preview-url:
     description: The deployed Vercel URL
-    value: ${{ steps.deploy.outputs.PREVIEW_URL }}
+    value: ${{ steps.deploy.outputs.url }}
 
 runs:
   using: composite
   steps:
-    - name: Checkout
-      uses: actions/checkout@v7
-
     - name: Download build output
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
         path: apps/web/.vercel/output
 
-    # BetaHuhn/deploy-to-vercel-action spawns the `vercel` binary itself
-    # (Error: spawn vercel ENOENT without this) — it doesn't bundle or
-    # install its own copy. The build job installs the CLI too, but that
-    # doesn't carry over: build and deploy run in separate jobs (separate
-    # runners) so build's install never reaches this one.
     - name: Install Vercel CLI
       shell: bash
       run: npm install --global vercel@latest
 
+    # No .vercel/project.json here — only .vercel/output was uploaded by
+    # the build job. VERCEL_ORG_ID/VERCEL_PROJECT_ID env vars stand in for
+    # `vercel link`, same pattern the build job's `vercel pull`/`vercel
+    # build` steps already use. Deploying via plain CLI (rather than
+    # BetaHuhn/deploy-to-vercel-action) also avoids that action's own
+    # WORKING_DIRECTORY input, which doubled with Vercel's server-side
+    # Root Directory setting (both resolving to apps/web) and produced a
+    # nonexistent apps/web/apps/web path.
     - name: Deploy prebuilt to Vercel
       id: deploy
-      uses: BetaHuhn/deploy-to-vercel-action@v1
-      with:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      working-directory: apps/web
+      env:
         VERCEL_TOKEN: ${{ inputs.vercel-token }}
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
-        WORKING_DIRECTORY: apps/web
-        PREBUILT: true
-        PRODUCTION: ${{ inputs.production }}
+      run: |
+        url=$(vercel deploy --prebuilt ${{ inputs.production == 'true' && '--prod' || '' }} --token="$VERCEL_TOKEN")
+        echo "url=$url" >> "$GITHUB_OUTPUT"

@@ -19,8 +19,6 @@ on:
 # workflow's own permissions: block alone.
 permissions:
   contents: read
-  deployments: write
-  pull-requests: write
 
 jobs:
   deploy:
