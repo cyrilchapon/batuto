@@ -203,13 +203,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     environment: ${{ inputs.gh-environment }}
-    # Safety net, not the fix itself (see deploy-api/action.yml's own
-    # retry/timeout around `docker pull`) — bounds the whole job so an
-    # unexpected hang anywhere in it (e.g. `heroku container:login` or
-    # `container:release` stalling, both real network calls with no
-    # timeout of their own) fails within minutes instead of silently
-    # running for GitHub Actions' default 6-hour job timeout.
-    timeout-minutes: 15
     steps:
       # Required even though this job reads no repo files itself — a
       # local composite action (`uses: ./...`) only resolves once the
