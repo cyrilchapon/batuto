@@ -180,11 +180,23 @@ async function main() {
   rmSync(primaryFuncDir, { recursive: true, force: true });
   mkdirSync(primaryFuncDir, { recursive: true });
 
-  // Adapted from @vercel/remix-builder's own defaults/server-react-router.mjs
-  // (the template it uses when its normal codepath works) — same handler
-  // logic, but importing the already-built server bundle by relative
-  // path instead of Vite's `virtual:react-router/server-build` module,
-  // which only resolves inside a Vite build, not at plain Node runtime.
+  // `@vercel/remix-builder`'s own defaults/server-react-router.mjs
+  // template exports a Web Fetch API handler `(request: Request) =>
+  // Response` — that's correct for an *Edge Runtime* function, but this
+  // one is a traditional Node.js runtime function
+  // (`runtime: "nodejs22.x"` below), which Vercel's Node launcher
+  // invokes the classic http.Server way: `(req, res) => void`, where
+  // `req.url` is just a path ("/"), not an absolute URL. A first version
+  // of this script used that Fetch-API template directly and crashed on
+  // every real request: `TypeError: Invalid URL ... input: "/"` —
+  // react-router's internal request handling does `new URL(request.url)`,
+  // and a bare Node `req` object doesn't have an absolute `.url`.
+  // `@react-router/node`'s own `createRequestListener({ build })` is the
+  // correct, first-party adapter for exactly this case — it returns a
+  // real `(req, res) => void` Node listener, handling the request/
+  // response conversion (and any v8 middleware / RouterContextProvider
+  // wiring) internally, the same way `@react-router/serve`'s own CLI
+  // uses it against a plain `http.createServer`.
   // The import specifier must be relative to *this entry file's own
   // location* (ESM relative imports resolve against the importing
   // file, not process.cwd()) — esbuild only needs it to be correct at
@@ -195,19 +207,11 @@ async function main() {
   if (!bundleImportSpecifier.startsWith(".")) {
     bundleImportSpecifier = `./${bundleImportSpecifier}`;
   }
-  const entrySource = `import * as RR from 'react-router';
+  const entrySource = `import { createRequestListener } from '@react-router/node';
 import * as build_ from ${JSON.stringify(bundleImportSpecifier)};
 const build = build_.default || build_;
 
-export default typeof build === 'function'
-  ? build
-  : (() => {
-      const handler = RR.createRequestHandler(build);
-      return (request) =>
-        build.future?.v8_middleware
-          ? handler(request, new RR.RouterContextProvider())
-          : handler(request);
-    })();
+export default createRequestListener({ build });
 `;
   writeFileSync(entryPath, entrySource);
 
