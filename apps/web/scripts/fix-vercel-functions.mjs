@@ -211,17 +211,25 @@ export default typeof build === 'function'
 `;
   writeFileSync(entryPath, entrySource);
 
-  const outfile = join(primaryFuncDir, "index.mjs");
+  const outfile = join(primaryFuncDir, "index.cjs");
   try {
     // Bundle everything (react-router, the compiled SSR build, and all
     // of their own dependencies) into one self-contained file — a
     // .func directory only ships what's physically inside it, so bare
     // `node_modules` imports would otherwise fail at runtime on Vercel.
+    //
+    // format: "cjs", not "esm" — confirmed via a real deploy crash:
+    // "Dynamic require of 'util' is not supported". react-dom/server's
+    // CJS build internally does a dynamic `require()` of a Node builtin;
+    // esbuild's ESM output has to synthesize a `require` shim for CJS
+    // interop, and that shim doesn't support this case. Bundling to CJS
+    // avoids the problem entirely — react-dom's own require() calls are
+    // then real, native Node requires, not an esbuild-synthesized shim.
     await esbuildBuild({
       entryPoints: [entryPath],
       bundle: true,
       platform: "node",
-      format: "esm",
+      format: "cjs",
       target: "node22",
       outfile,
       logLevel: "warning",
@@ -235,7 +243,7 @@ export default typeof build === 'function'
     `${JSON.stringify(
       {
         runtime: "nodejs22.x",
-        handler: "index.mjs",
+        handler: "index.cjs",
         launcherType: "Nodejs",
         shouldAddHelpers: true,
       },
