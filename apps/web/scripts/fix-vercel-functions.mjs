@@ -245,7 +245,15 @@ export default typeof build === 'function'
         runtime: "nodejs22.x",
         handler: "index.cjs",
         launcherType: "Nodejs",
-        shouldAddHelpers: true,
+        // shouldAddHelpers defaults to false (per the Build Output API
+        // docs) and must stay that way here — confirmed via a real
+        // deployed crash: `new URL("/")` throwing ERR_INVALID_URL
+        // inside react-router's request handler. `true` forces Vercel's
+        // classic (req, res)-with-helpers invocation style, where
+        // `req.url` is just a path ("/"), not a full URL — incompatible
+        // with a Web Fetch API-style handler (a single `request: Request`
+        // argument), which is what react-router's createRequestHandler,
+        // and Vercel's own official react-router template, both export.
       },
       null,
       2,
