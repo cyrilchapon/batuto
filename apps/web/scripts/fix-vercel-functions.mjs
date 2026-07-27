@@ -13,14 +13,23 @@
 // correctly locates the real compiled server bundle
 // (build/server/nodejs_<hash>/index.js) — but something further
 // downstream, inside the vercel CLI's own closed-source Lambda-to-
-// -Build-Output-v3 materialization step, silently drops the actual
-// `.vercel/output/functions/*.func` directories. No error, no warning
-// — just a deployment that serves static assets only and 404s on
-// every route. This script runs *after* `vercel build` (which is why
-// it's a separate CI step, not chained into this package's own `build`
-// script — config.json doesn't exist until vercel build's builder
-// logic finishes) and hand-creates whatever function directories
-// config.json expects but vercel build didn't actually produce.
+// -Build-Output-v3 materialization step, mishandles routes whose `dest`
+// contains a wildcard (e.g. "sign-in/*.data"): instead of a clean
+// function directory, it writes the literal, unsanitized `path` string
+// as a nested directory tree — a real, confirmed-on-disk
+// "functions/sign-in/*.data.func/" containing an actual `.vc-config.json`,
+// not a no-op. That's invalid for actions/upload-artifact (and most
+// filesystems) regardless of whether Vercel's own platform can make
+// sense of it — confirmed via a real CI failure ("Contains ... Asterisk
+// *"). Plain top-level routes (no wildcard, e.g. "index") get a clean
+// name and work fine; this only affects wildcard sub-routes. This
+// script runs *after* `vercel build` (which is why it's a separate CI
+// step, not chained into this package's own `build` script —
+// config.json doesn't exist until vercel build's builder logic
+// finishes): it first removes any such broken, invalid-named paths
+// left behind, then hand-creates whatever function directories
+// config.json expects but vercel build didn't actually produce a clean
+// version of.
 //
 // Deliberately scoped to this app's actual current shape (one server
 // bundle, no per-route `export const config` overrides splitting work
@@ -28,9 +37,21 @@
 // multi-bundle apps — if that ever changes, this script will warn
 // loudly rather than silently mis-wire things.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { build as esbuildBuild } from "esbuild";
+
+// Characters actions/upload-artifact (and most non-Unix filesystems)
+// reject in an artifact path.
+const INVALID_PATH_CHARS = /["*:<>|?\r\n]/;
 
 const OUTPUT_DIR = ".vercel/output";
 const FUNCTIONS_DIR = join(OUTPUT_DIR, "functions");
@@ -58,6 +79,28 @@ function destToFunctionName(dest) {
   return name;
 }
 
+// Recursively removes anything under `dir` whose name contains a
+// character invalid for artifact upload — vercel build's own broken
+// wildcard-route materialization is the only thing that produces these
+// (see the header comment), but this doesn't assume that's the only
+// possible cause.
+function removeInvalidPaths(dir) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (INVALID_PATH_CHARS.test(entry.name)) {
+      console.warn(
+        `[fix-vercel-functions] Removing invalid path left by vercel build: ${fullPath}`,
+      );
+      rmSync(fullPath, { recursive: true, force: true });
+      continue;
+    }
+    if (entry.isDirectory()) {
+      removeInvalidPaths(fullPath);
+    }
+  }
+}
+
 async function main() {
   if (!existsSync(BUILD_RESULT_PATH)) {
     console.log(`[fix-vercel-functions] No ${BUILD_RESULT_PATH} found — nothing to do.`);
@@ -67,6 +110,8 @@ async function main() {
     console.log(`[fix-vercel-functions] No ${CONFIG_PATH} found — nothing to do.`);
     return;
   }
+
+  removeInvalidPaths(FUNCTIONS_DIR);
 
   const { buildManifest } = readJson(BUILD_RESULT_PATH);
   const serverBundles = Object.values(buildManifest?.serverBundles ?? {});
