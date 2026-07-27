@@ -12,6 +12,16 @@ inputs:
   heroku-app-name:
     description: Name of the Heroku app to deploy to
     required: true
+  github-token:
+    description: GitHub token, for creating a GitHub Deployment and PR comment
+    required: true
+  deployment-environment:
+    description: GitHub Deployment environment name, e.g. Production-api, pr-8-api
+    required: true
+  pr-number:
+    description: Pull request number to comment on; leave empty outside PR review deploys
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -48,3 +58,13 @@ runs:
         HEROKU_API_KEY: ${{ inputs.heroku-api-key }}
         HEROKU_APP_NAME: ${{ inputs.heroku-app-name }}
       run: heroku container:release web --app "$HEROKU_APP_NAME"
+
+    - name: Notify GitHub deployment
+      uses: ./.github/actions/notify-deploy
+      with:
+        github-token: ${{ inputs.github-token }}
+        environment: ${{ inputs.deployment-environment }}
+        ref: ${{ github.sha }}
+        target-url: https://${{ inputs.heroku-app-name }}.herokuapp.com
+        description: Heroku
+        pr-number: ${{ inputs.pr-number }}

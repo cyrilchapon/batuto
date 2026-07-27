@@ -19,6 +19,16 @@ inputs:
     description: "'true' for a Vercel production deploy, 'false' for preview"
     required: false
     default: "false"
+  github-token:
+    description: GitHub token, for creating a GitHub Deployment and PR comment
+    required: true
+  deployment-environment:
+    description: GitHub Deployment environment name, e.g. Production-web, pr-8-web
+    required: true
+  pr-number:
+    description: Pull request number to comment on; leave empty outside PR review deploys
+    required: false
+    default: ""
 
 outputs:
   preview-url:
@@ -57,3 +67,13 @@ runs:
       run: |
         url=$(vercel deploy --prebuilt ${{ inputs.production == 'true' && '--prod' || '' }} --token="$VERCEL_TOKEN")
         echo "url=$url" >> "$GITHUB_OUTPUT"
+
+    - name: Notify GitHub deployment
+      uses: ./.github/actions/notify-deploy
+      with:
+        github-token: ${{ inputs.github-token }}
+        environment: ${{ inputs.deployment-environment }}
+        ref: ${{ github.sha }}
+        target-url: ${{ steps.deploy.outputs.url }}
+        description: Vercel
+        pr-number: ${{ inputs.pr-number }}

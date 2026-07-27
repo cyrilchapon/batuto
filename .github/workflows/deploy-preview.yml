@@ -25,6 +25,8 @@ on:
 
 permissions:
   contents: read
+  deployments: write
+  pull-requests: write
 
 jobs:
   # --- Build (parallel) ---
@@ -274,6 +276,9 @@ jobs:
         with:
           heroku-api-key: ${{ secrets.HEROKU_API_KEY }}
           heroku-app-name: batuto-api-pr-${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: pr-${{ github.event.pull_request.number }}-api
+          pr-number: ${{ github.event.pull_request.number }}
 
   deploy-web:
     name: Deploy web review app to Vercel
@@ -296,6 +301,9 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
           production: "false"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: pr-${{ github.event.pull_request.number }}-web
+          pr-number: ${{ github.event.pull_request.number }}
 
   link-cors:
     name: Point the API review app back at its web preview URL

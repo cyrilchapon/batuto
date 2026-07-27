@@ -33,6 +33,7 @@ on:
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   # --- Build (parallel) ---
@@ -171,6 +172,8 @@ jobs:
         with:
           heroku-api-key: ${{ secrets.HEROKU_API_KEY }}
           heroku-app-name: ${{ vars.HEROKU_APP_NAME }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: ${{ format('{0}-api', inputs.gh-environment) }}
 
   deploy-web:
     name: Deploy web to Vercel
@@ -189,3 +192,5 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
           production: ${{ inputs.vercel-prod }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deployment-environment: ${{ format('{0}-web', inputs.gh-environment) }}

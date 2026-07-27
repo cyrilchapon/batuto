@@ -19,6 +19,7 @@ on:
 # workflow's own permissions: block alone.
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   deploy:
