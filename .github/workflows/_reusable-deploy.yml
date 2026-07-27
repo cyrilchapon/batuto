@@ -80,11 +80,14 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      # `vercel` is a real, committed devDependency (both root and
+      # apps/web package.json — this job and deploy-web's own job each
+      # invoke it from a different cwd, see below), installed by this
+      # step — not a global npm install. This repo uses yarn
+      # exclusively, everywhere; see infra-and-envs.md's "Package
+      # manager: yarn only, nothing global" section for why.
       - name: Install dependencies
         run: yarn install --immutable
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
 
       # working-directory: apps/web here is load-bearing for @vercel/
       # remix-builder specifically, not just a style choice — confirmed
@@ -106,7 +109,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-        run: vercel pull --yes --environment=${{ inputs.vercel-prod && 'production' || 'preview' }} --token="$VERCEL_TOKEN"
+        run: yarn vercel pull --yes --environment=${{ inputs.vercel-prod && 'production' || 'preview' }} --token="$VERCEL_TOKEN"
 
       - name: Build
         working-directory: apps/web
@@ -114,7 +117,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-        run: vercel build ${{ inputs.vercel-prod && '--prod' || '' }} --token="$VERCEL_TOKEN"
+        run: yarn vercel build ${{ inputs.vercel-prod && '--prod' || '' }} --token="$VERCEL_TOKEN"
 
       # project.json (just projectId/orgId, no secrets) travels with the
       # output so the deploy job has a real local Vercel project link —

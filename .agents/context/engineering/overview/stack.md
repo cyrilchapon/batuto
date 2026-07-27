@@ -2,7 +2,7 @@
 title: Tech stack overview
 summary: Turborepo/Yarn monorepo, React+Vite frontend, Express+oRPC backend, Prisma/Postgres, Clerk, Doppler, Betterstack — full detail lives in Linear
 category: engineering
-last_updated: 2026-07-17
+last_updated: 2026-07-27
 related:
   - engineering/overview/monorepo-layout.md
   - engineering/overview/infra-and-envs.md
@@ -15,7 +15,7 @@ related:
 
 ## Monorepo
 
-Turborepo + Yarn workspaces.
+Turborepo + Yarn workspaces. Yarn only, everywhere — never `npm`, never a global install; see `infra-and-envs.md`'s "Package manager: yarn only, nothing global" for the full convention and why it matters.
 
 ## Frontend
 

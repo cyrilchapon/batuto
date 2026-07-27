@@ -30,6 +30,7 @@
     "knip": "^6.27.0",
     "syncpack": "^15.3.2",
     "turbo": "^2.5.8",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vercel": "^57.0.0"
   }
 }
