@@ -67,11 +67,16 @@ jobs:
 
       # Container Registry pushes require the app to already exist —
       # create it (idempotent: skip if a PR re-push already created it).
+      # --stack container is required at creation time — a plain
+      # `apps:create` defaults to Heroku's buildpack stack (heroku-24),
+      # which `container:push`/`container:release` (used later in this
+      # job and by deploy-api) refuse to touch ("This command is for
+      # Docker apps only").
       - name: Ensure Heroku review app exists
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           APP_NAME: batuto-api-pr-${{ github.event.pull_request.number }}
-        run: heroku apps:info --app "$APP_NAME" >/dev/null 2>&1 || heroku apps:create "$APP_NAME"
+        run: heroku apps:info --app "$APP_NAME" >/dev/null 2>&1 || heroku apps:create "$APP_NAME" --stack container
 
       - name: Log in to Heroku Container Registry
         env:
