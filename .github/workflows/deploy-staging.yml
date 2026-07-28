@@ -10,6 +10,7 @@ name: Deploy to staging
 on:
   push:
     branches: [dev]
+  workflow_dispatch: {}
 
 # Redeclared here, not just in _reusable-deploy.yml: for workflow_call, the
 # effective token permissions are the intersection of what the callee
