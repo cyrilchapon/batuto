@@ -1,3 +1,4 @@
+import { expressErrorHandler } from "@appsignal/nodejs";
 import { OpenAPIHandler } from "@orpc/openapi/node";
 import cors from "cors";
 import express from "express";
@@ -22,6 +23,9 @@ export function createApp() {
       next();
     }
   });
+
+  // Must come after all routes, before any other error handlers.
+  app.use(expressErrorHandler());
 
   return app;
 }

@@ -6,6 +6,7 @@ import { z } from "zod";
 const appEnvSchema = z.object({
   ...authEnvShape,
   ...dbEnvShape,
+  APPSIGNAL_PUSH_API_KEY: z.string(),
   PORT: z.coerce.number().default(3001),
   WEB_URL: z.string().default("http://localhost:5173"),
 });
