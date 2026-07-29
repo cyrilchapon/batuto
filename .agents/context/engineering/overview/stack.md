@@ -1,8 +1,8 @@
 ---
 title: Tech stack overview
-summary: Turborepo/Yarn monorepo, React+Vite frontend, Express+oRPC backend, Prisma/Postgres, Clerk, Doppler, Betterstack — full detail lives in Linear
+summary: Turborepo/Yarn monorepo, React+Vite frontend, Express+oRPC backend, Prisma/Postgres, Clerk, Doppler, AppSignal — full detail lives in Linear
 category: engineering
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 related:
   - engineering/overview/monorepo-layout.md
   - engineering/overview/infra-and-envs.md
@@ -49,10 +49,10 @@ Frontend on Vercel, backend on Heroku, database on Neon (Postgres) — using Neo
 
 ## Observability
 
-Betterstack only — logs, error tracking, and uptime monitoring in one platform (Sentry-SDK-compatible error tracking, so migrating to Sentry later would cost no more than swapping a DSN).
+AppSignal only — error tracking, structured logging, and performance monitoring in one platform, with frontend JS errors/Core Web Vitals correlated to backend traces out of the box. Replaced an earlier Betterstack pick on 2026-07-29 after benchmarking against Betterstack, Dash0, and Superlog — see the Linear document for the full comparison.
 
 ## Secrets
 
 Doppler is the single source of truth for all secrets/environment variables, syncing natively to Heroku, Vercel, and CI — see `infra-and-envs.md`.
 
-For the full narrative and the reasoning behind each choice (e.g. why Betterstack replaced a Sentry+Betterstack split, why Clerk is identity-only), read the Linear document directly rather than assuming this summary captures it all.
+For the full narrative and the reasoning behind each choice (e.g. why AppSignal replaced Betterstack, why Clerk is identity-only), read the Linear document directly rather than assuming this summary captures it all.

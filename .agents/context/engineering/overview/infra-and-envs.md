@@ -2,7 +2,7 @@
 title: Infra and environments
 summary: Doppler is the single secrets source syncing to Heroku/Vercel/CI; provisioned first, before anything that needs a secret
 category: engineering
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 related:
   - engineering/overview/stack.md
   - engineering/modules/auth.md
@@ -14,7 +14,7 @@ related:
 
 ## Doppler — secrets, single source of truth
 
-Doppler holds every secret and environment variable (Clerk keys, Neon connection string, Betterstack tokens, etc.) across all environments, syncing natively rather than being set by hand in multiple dashboards:
+Doppler holds every secret and environment variable (Clerk keys, Neon connection string, AppSignal push API key, etc.) across all environments, syncing natively rather than being set by hand in multiple dashboards:
 
 - **Heroku** — Doppler's Heroku integration pushes config vars automatically on change.
 - **Vercel** — Doppler's Vercel integration does the same for frontend env vars.
@@ -30,7 +30,7 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 
   `apps/api` and `packages/db` load a second, higher-priority file on top: `.env.local`. Unlike `.env`, `.env.local` is never written by `env:pull` — it exists specifically to hold the personal Neon branch connection string from `db:branch` (see below), which must survive repeated `env:pull` runs and must not collide across parallel worktrees/sessions the way a shared Doppler config value would. See "Neon database branching (local dev)" for the mechanism.
 
-**Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, Betterstack tokens — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
+**Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, AppSignal push API key — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
 
 The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
 
@@ -188,7 +188,9 @@ Heroku Scheduler, not an in-process scheduler (e.g. node-cron living in the same
 
 ## Observability
 
-Betterstack covers logs, error tracking, and uptime monitoring — one platform, not two. Wired via the Heroku log-drain addon for logs, plus the (Sentry-SDK-compatible) error tracking SDK on both frontend and backend. This consolidates what was originally scoped as a Sentry (errors) + Betterstack (logs) split, once Betterstack shipped native Sentry-compatible error tracking (GA April 2026) and running both became redundant.
+AppSignal covers error tracking, structured logging, and performance monitoring — one platform, not several. Wired via AppSignal's own Node.js integration on the backend and its JavaScript error tracking (Core Web Vitals + JS errors, auto-correlated with backend traces) on the frontend.
+
+**Decision history:** originally scoped as Sentry (errors) + Betterstack (logs), consolidated onto Betterstack alone once it shipped native Sentry-compatible error tracking (GA April 2026). Revisited on 2026-07-29, before any Betterstack wiring landed, after benchmarking Betterstack against Dash0, AppSignal, and Superlog on four criteria: full observability with frontend↔backend correlation, a modern/simple/standards-based (OpenTelemetry) product, and a genuinely free tier with sane pricing scaling. AppSignal won on a real forever-free tier plus already-shipped frontend↔backend correlation, over Dash0 (best OpenTelemetry-native architecture, but no permanent free tier) and Superlog (purest OTel play and genuinely new, but no frontend/RUM story at all — backend-only). Trade-off accepted: AppSignal's own OpenTelemetry support is comparatively recent (Aug 2025), layered onto ~10 years of proprietary agents, so it's less "OTel-native from the ground up" than Dash0. See the Linear "Tech stack" document for the full comparison.
 
 ## CI/CD
 
