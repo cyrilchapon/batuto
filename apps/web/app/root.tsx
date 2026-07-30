@@ -1,7 +1,7 @@
 import { ClerkProvider } from "@clerk/react-router";
 import { clerkMiddleware, rootAuthLoader } from "@clerk/react-router/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -13,6 +13,7 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { appsignal } from "./appsignal.client.js";
 import { appEnv } from "./env.js";
 import { serverEnv } from "./env.server.js";
 
@@ -74,6 +75,17 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   let message = "Oops!";
   let details = "An unexpected error occurred.";
   let stack: string | undefined;
+
+  // useEffect, not a plain call in the render body: this component also
+  // renders during SSR (to produce the error page's initial HTML), where
+  // `appsignal` is undefined - appsignal.client.ts is stripped from the
+  // server bundle by React Router's .client.ts convention. useEffect never
+  // runs server-side, so this only ever fires in the browser.
+  useEffect(() => {
+    if (error instanceof Error) {
+      appsignal.sendError(error);
+    }
+  }, [error]);
 
   if (isRouteErrorResponse(error)) {
     message = error.status === 404 ? "404" : "Error";

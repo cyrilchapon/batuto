@@ -5,6 +5,15 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
+"@appsignal/javascript@npm:=1.6.1, @appsignal/javascript@npm:^1.6.1":
+  version: 1.6.1
+  resolution: "@appsignal/javascript@npm:1.6.1"
+  dependencies:
+    tslib: "npm:^2.3.0"
+  checksum: 10c0/952e27c945a7c43fd1c2b425294481d5f04e9ab5afcfb76771f22e7b25f32aab5e76a3302c5a22df1d5f010841176d35d974d7f56366c98fafef6d88112f9873
+  languageName: node
+  linkType: hard
+
 "@appsignal/nodejs@npm:^3.8.1":
   version: 3.8.1
   resolution: "@appsignal/nodejs@npm:3.8.1"
@@ -59,6 +68,42 @@ __metadata:
     bullmq:
       optional: true
   checksum: 10c0/2ffd771e8a4eb04552ebeaceb2580fc9ca7725ec3f21c51b86baba63b4a27852b8ec3d6bacffe0703f01dd4af678b83ee451d52c7d960dd2882d38f17cd999d0
+  languageName: node
+  linkType: hard
+
+"@appsignal/plugin-breadcrumbs-console@npm:^1.1.37":
+  version: 1.1.37
+  resolution: "@appsignal/plugin-breadcrumbs-console@npm:1.1.37"
+  dependencies:
+    "@appsignal/javascript": "npm:=1.6.1"
+  checksum: 10c0/d8b1f695f7e3dc44fe14db4c8a465a1874eb266a679e1dd1895e1b91001f79891740614d756ed14cc2f7652ec1cea8f9cd27c18da54ebfbb4fb78995a5eacb36
+  languageName: node
+  linkType: hard
+
+"@appsignal/plugin-breadcrumbs-network@npm:^1.1.24":
+  version: 1.1.24
+  resolution: "@appsignal/plugin-breadcrumbs-network@npm:1.1.24"
+  dependencies:
+    "@appsignal/javascript": "npm:=1.6.1"
+  checksum: 10c0/23a0695002b93cc4ba5343629d4fa6ef519e2c22eda9ad3a3c15030d8a9edbdc47ebc049692a3ec829415aecbf194fe13d99dec67ebb2f9f0b905f5b90dbd6e6
+  languageName: node
+  linkType: hard
+
+"@appsignal/plugin-path-decorator@npm:^1.0.18":
+  version: 1.0.18
+  resolution: "@appsignal/plugin-path-decorator@npm:1.0.18"
+  dependencies:
+    "@appsignal/javascript": "npm:=1.6.1"
+  checksum: 10c0/2511573d98b81b6881001e277ff124ff50b1286037d5e992ee505786b92f24b47ff3ea5dccba32d1b9d290e7c436e82fd80816339838c2d2f792c4d6e2cf3701
+  languageName: node
+  linkType: hard
+
+"@appsignal/plugin-window-events@npm:^1.0.26":
+  version: 1.0.26
+  resolution: "@appsignal/plugin-window-events@npm:1.0.26"
+  dependencies:
+    "@appsignal/javascript": "npm:=1.6.1"
+  checksum: 10c0/d5f1a795df825203381ce2d561378f9e22f43ba448b5e207dc7af5bb3f52154ef5d12d969b9e0f0b631263428da819594ac03fe46b7fd007b4bc67cdc9b9acf5
   languageName: node
   linkType: hard
 
@@ -551,6 +596,11 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@batuto/web@workspace:apps/web"
   dependencies:
+    "@appsignal/javascript": "npm:^1.6.1"
+    "@appsignal/plugin-breadcrumbs-console": "npm:^1.1.37"
+    "@appsignal/plugin-breadcrumbs-network": "npm:^1.1.24"
+    "@appsignal/plugin-path-decorator": "npm:^1.0.18"
+    "@appsignal/plugin-window-events": "npm:^1.0.26"
     "@base-ui/react": "npm:^1.6.0"
     "@batuto/contract": "workspace:*"
     "@batuto/env": "workspace:*"
@@ -11850,7 +11900,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tslib@npm:2.8.1, tslib@npm:^2.0.1, tslib@npm:^2.4.0, tslib@npm:^2.8.0, tslib@npm:^2.8.1":
+"tslib@npm:2.8.1, tslib@npm:^2.0.1, tslib@npm:^2.3.0, tslib@npm:^2.4.0, tslib@npm:^2.8.0, tslib@npm:^2.8.1":
   version: 2.8.1
   resolution: "tslib@npm:2.8.1"
   checksum: 10c0/9c4759110a19c53f992d9aae23aac5ced636e99887b51b9e61def52611732872ff7668757d4e4c61f19691e36f4da981cd9485e869b4a7408d689f6bf1f14e62
