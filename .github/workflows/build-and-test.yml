@@ -48,7 +48,7 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
           doppler-project: batuto-api
-          doppler-config: dev
+          doppler-config: stg
 
       - name: Apply database migrations
         run: yarn workspace @batuto/db migrate:deploy
@@ -61,3 +61,4 @@ jobs:
         env:
           CLERK_SECRET_KEY: ${{ steps.doppler.outputs.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ steps.doppler.outputs.CLERK_PUBLISHABLE_KEY }}
+          APPSIGNAL_PUSH_API_KEY: ${{ steps.doppler.outputs.APPSIGNAL_PUSH_API_KEY }}

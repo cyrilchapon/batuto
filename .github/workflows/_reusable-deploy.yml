@@ -27,7 +27,7 @@ on:
         required: true
         type: boolean
       doppler-config:
-        description: batuto-db Doppler config to pull the real BASE_DATABASE_URL from for migrations (dev | prd)
+        description: batuto-db Doppler config to pull the real BASE_DATABASE_URL from for migrations (stg | prd)
         required: true
         type: string
 

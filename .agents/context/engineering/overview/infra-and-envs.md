@@ -2,11 +2,12 @@
 title: Infra and environments
 summary: Doppler is the single secrets source syncing to Heroku/Vercel/CI; provisioned first, before anything that needs a secret
 category: engineering
-last_updated: 2026-07-27
+last_updated: 2026-07-30
 related:
   - engineering/overview/stack.md
   - engineering/modules/auth.md
   - engineering/modules/frontend-auth.md
+  - engineering/modules/logs.md
   - engineering/overview/quality-gates.md
 ---
 
@@ -14,7 +15,7 @@ related:
 
 ## Doppler — secrets, single source of truth
 
-Doppler holds every secret and environment variable (Clerk keys, Neon connection string, Betterstack tokens, etc.) across all environments, syncing natively rather than being set by hand in multiple dashboards:
+Doppler holds every secret and environment variable (Clerk keys, Neon connection string, AppSignal push API key, etc.) across all environments, syncing natively rather than being set by hand in multiple dashboards:
 
 - **Heroku** — Doppler's Heroku integration pushes config vars automatically on change.
 - **Vercel** — Doppler's Vercel integration does the same for frontend env vars.
@@ -30,7 +31,7 @@ Doppler holds every secret and environment variable (Clerk keys, Neon connection
 
   `apps/api` and `packages/db` load a second, higher-priority file on top: `.env.local`. Unlike `.env`, `.env.local` is never written by `env:pull` — it exists specifically to hold the personal Neon branch connection string from `db:branch` (see below), which must survive repeated `env:pull` runs and must not collide across parallel worktrees/sessions the way a shared Doppler config value would. See "Neon database branching (local dev)" for the mechanism.
 
-**Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, Betterstack tokens — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
+**Doppler comes first, before anything that needs a secret.** Every bootstrap item that needs one — DB connection string, Clerk keys, AppSignal push API key — should be pulled from Doppler from the moment it's introduced, not retrofitted after secrets are already scattered across dashboards and `.env` files.
 
 The actual Doppler projects and `env:pull` scripts land with BAT-4 (Doppler provisioning) — this repo doesn't add them speculatively before real projects exist.
 
@@ -47,9 +48,22 @@ This repo uses Yarn (Berry, Corepack-pinned via `packageManager` in the root `pa
 
 ## Environment structure
 
-**Decided: dev/prod, not dev/staging/prod** (BAT-4) — but `dev` is explicitly treated as staging-like in the deploy pipeline (see "Imperative deploys" below): its own persistent Heroku app and Vercel Preview alias, sitting between local dev and real production. `dev` is today's default/trunk branch; `main` is the production branch — a real Heroku prod app and the `Production` GitHub Environment already exist for it, ahead of `main` itself existing as a branch (see `quality-gates.md`'s CI section for where the other workflows' branch triggers will need to move once it does). A fourth, ephemeral tier — one Heroku app + one Vercel preview + one Neon branch per open PR — covers review apps; it isn't a persistent "environment" in the Doppler-config sense below, just a deploy target.
+**Revised 2026-07-30: dev/stg/prd, three real Doppler environments** (superseding the original BAT-4 "dev/prod, not dev/staging/prod" decision). The original decision conflated two genuinely different things under the word "dev": a developer's own laptop, and the persistent, shared, staging-like deployed tier (its own Heroku app + Vercel Preview alias, sitting between local dev and real production — see "Imperative deploys" below). That conflation surfaced as a real gap while wiring AppSignal's `environment` tag (BAT-13/BAT-18): with no distinct Doppler environment for the deployed staging tier, local dev noise and real staging incidents would have landed in the same bucket.
 
-Each runnable package's dedicated Doppler project (see below) carries two configs: `dev` (with a `dev_personal` branch per developer, per Doppler's own convention) and `prd`. Project naming follows the package name: `batuto-api`, `batuto-web`, `batuto-db`.
+The fix, scoped deliberately narrowly to the Doppler layer:
+
+- **`dev`** is now exclusively for local development — a developer's own machine. Unchanged in shape: `dev` config with a `dev_personal` branch per developer, per Doppler's own convention (see "Local dev" below). Nothing shared or automated reads from `dev` anymore.
+- **`stg`** (new) is the target for everything that's shared, automated, or actually deployed but not yet production: the persistent staging Heroku app + Vercel Preview alias, PR review apps, and CI's own `build-and-test.yml`/`db-checks.yml` runs. Every `doppler-config: dev` in `.github/workflows/**`/`.github/actions/**` that fetched shared (non-personal) secrets moved to `doppler-config: stg`.
+- **`prd`** is unchanged.
+
+**Deliberately NOT changed as part of this**, since they're separate concerns from the Doppler config layer:
+- The git branch itself stays named `dev` (still today's default/trunk branch, still triggers the staging deploy) — a branch name and the Doppler environment it happens to deploy against don't have to match, and renaming the actual default branch is a much bigger, separate, higher-blast-radius operation (GitHub default-branch change, branch protection rules, every collaborator's local tracking branch) than the config-naming fix this addressed.
+- The shared Neon branch every ephemeral CI/PR clone forks from is still literally named/labeled `dev` — only the Doppler config used to fetch *its connection string* moved to `stg`, the branch itself wasn't renamed.
+- The persistent Heroku app / Vercel alias's own underlying names weren't changed — the `Staging` GitHub Environment (which already existed, already correctly named) is what actually scopes their `vars`/`secrets`, not their literal app name string.
+
+`main` is the production branch — a real Heroku prod app and the `Production` GitHub Environment already exist for it, ahead of `main` itself existing as a branch (see `quality-gates.md`'s CI section for where the other workflows' branch triggers will need to move once it does). A fifth, ephemeral tier — one Heroku app + one Vercel preview + one Neon branch per open PR — covers review apps; it isn't a persistent "environment" in the Doppler-config sense above, just a deploy target (and, per the fix above, now pulls its shared secrets from `stg` too).
+
+Each runnable package's dedicated Doppler project (see below) carries three environments: `dev` (with a `dev_personal` branch per developer, per Doppler's own convention), `stg`, and `prd`. Project naming follows the package name: `batuto-api`, `batuto-web`, `batuto-db`.
 
 ## Hosting targets
 
@@ -188,7 +202,9 @@ Heroku Scheduler, not an in-process scheduler (e.g. node-cron living in the same
 
 ## Observability
 
-Betterstack covers logs, error tracking, and uptime monitoring — one platform, not two. Wired via the Heroku log-drain addon for logs, plus the (Sentry-SDK-compatible) error tracking SDK on both frontend and backend. This consolidates what was originally scoped as a Sentry (errors) + Betterstack (logs) split, once Betterstack shipped native Sentry-compatible error tracking (GA April 2026) and running both became redundant.
+AppSignal covers error tracking, structured logging, and performance monitoring — one platform, not several. Wired via AppSignal's own Node.js integration on the backend and its JavaScript error tracking (Core Web Vitals + JS errors, auto-correlated with backend traces) on the frontend. Backend logging goes through `@batuto/logs` (Pino + AppSignal's Pino transport) — see [logs.md](../modules/logs.md) for that package and why AppSignal's `environment` tag is set from `DOPPLER_ENVIRONMENT` (depends on the dev/stg/prd split below).
+
+**Decision history:** originally scoped as Sentry (errors) + Betterstack (logs), consolidated onto Betterstack alone once it shipped native Sentry-compatible error tracking (GA April 2026). Revisited on 2026-07-29, before any Betterstack wiring landed, after benchmarking Betterstack against Dash0, AppSignal, and Superlog on four criteria: full observability with frontend↔backend correlation, a modern/simple/standards-based (OpenTelemetry) product, and a genuinely free tier with sane pricing scaling. AppSignal won on a real forever-free tier plus already-shipped frontend↔backend correlation, over Dash0 (best OpenTelemetry-native architecture, but no permanent free tier) and Superlog (purest OTel play and genuinely new, but no frontend/RUM story at all — backend-only). Trade-off accepted: AppSignal's own OpenTelemetry support is comparatively recent (Aug 2025), layered onto ~10 years of proprietary agents, so it's less "OTel-native from the ground up" than Dash0. See the Linear "Tech stack" document for the full comparison.
 
 ## CI/CD
 

@@ -31,7 +31,7 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
           doppler-project: batuto-db
-          doppler-config: dev
+          doppler-config: stg
 
       - name: Parse shadow project's database/role
         id: shadow-parent
@@ -100,7 +100,7 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
           doppler-project: batuto-db
-          doppler-config: dev
+          doppler-config: stg
 
       - name: Parse dev database/role
         id: dev-parent

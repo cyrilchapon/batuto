@@ -27,7 +27,7 @@ Curried so a schema can be bound once (`const parseAppEnv = parseEnvFromSchema(a
 
 ## 2. Provider packages — export a shape, not a schema
 
-Any package that wraps an external integration (`@batuto/db` wrapping Prisma/Neon today; the same pattern applies to any future Clerk/Betterstack/etc. package) exports its env needs as a plain **shape object** — not a `z.object(...)` instance — plus the inferred type, from its own `src/env.ts`:
+Any package that wraps an external integration (`@batuto/db` wrapping Prisma/Neon today; the same pattern applies to any future Clerk/AppSignal/etc. package) exports its env needs as a plain **shape object** — not a `z.object(...)` instance — plus the inferred type, from its own `src/env.ts`:
 
 ```ts
 export const dbEnvShape = {
