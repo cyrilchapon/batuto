@@ -290,9 +290,9 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
           doppler-project: batuto-api
-          doppler-config: dev
+          doppler-config: stg
 
-      # Everything from batuto-api's dev config, except DATABASE_URL (this
+      # Everything from batuto-api's stg config, except DATABASE_URL (this
       # PR's own Neon clone, never the shared dev database) and WEB_URL
       # (unknown yet — the web review app doesn't exist until deploy-web
       # runs next. It defaults to a harmless value; `link-cors` patches in
@@ -402,7 +402,7 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
           doppler-project: batuto-db
-          doppler-config: dev
+          doppler-config: stg
 
       # neonctl accepts a branch name directly (no id lookup needed,
       # unlike neondatabase/delete-branch-action which requires branch_id

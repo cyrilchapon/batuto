@@ -18,7 +18,7 @@ description: >
 
 inputs:
   doppler-token:
-    description: Doppler token (repository secret) — used to fetch batuto-db's dev config
+    description: Doppler token (repository secret) — used to fetch batuto-db's stg config
     required: true
   pr-number:
     description: Pull request number — the branch is named pr-<number>
@@ -41,7 +41,7 @@ runs:
       with:
         doppler-token: ${{ inputs.doppler-token }}
         doppler-project: batuto-db
-        doppler-config: dev
+        doppler-config: stg
 
     - name: Parse dev database/role
       id: dev-parent

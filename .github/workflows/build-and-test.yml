@@ -48,7 +48,7 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
           doppler-project: batuto-api
-          doppler-config: dev
+          doppler-config: stg
 
       - name: Apply database migrations
         run: yarn workspace @batuto/db migrate:deploy

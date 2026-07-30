@@ -2,7 +2,7 @@
 title: Infra and environments
 summary: Doppler is the single secrets source syncing to Heroku/Vercel/CI; provisioned first, before anything that needs a secret
 category: engineering
-last_updated: 2026-07-29
+last_updated: 2026-07-30
 related:
   - engineering/overview/stack.md
   - engineering/modules/auth.md
@@ -47,9 +47,22 @@ This repo uses Yarn (Berry, Corepack-pinned via `packageManager` in the root `pa
 
 ## Environment structure
 
-**Decided: dev/prod, not dev/staging/prod** (BAT-4) — but `dev` is explicitly treated as staging-like in the deploy pipeline (see "Imperative deploys" below): its own persistent Heroku app and Vercel Preview alias, sitting between local dev and real production. `dev` is today's default/trunk branch; `main` is the production branch — a real Heroku prod app and the `Production` GitHub Environment already exist for it, ahead of `main` itself existing as a branch (see `quality-gates.md`'s CI section for where the other workflows' branch triggers will need to move once it does). A fourth, ephemeral tier — one Heroku app + one Vercel preview + one Neon branch per open PR — covers review apps; it isn't a persistent "environment" in the Doppler-config sense below, just a deploy target.
+**Revised 2026-07-30: dev/stg/prd, three real Doppler environments** (superseding the original BAT-4 "dev/prod, not dev/staging/prod" decision). The original decision conflated two genuinely different things under the word "dev": a developer's own laptop, and the persistent, shared, staging-like deployed tier (its own Heroku app + Vercel Preview alias, sitting between local dev and real production — see "Imperative deploys" below). That conflation surfaced as a real gap while wiring AppSignal's `environment` tag (BAT-13/BAT-18): with no distinct Doppler environment for the deployed staging tier, local dev noise and real staging incidents would have landed in the same bucket.
 
-Each runnable package's dedicated Doppler project (see below) carries two configs: `dev` (with a `dev_personal` branch per developer, per Doppler's own convention) and `prd`. Project naming follows the package name: `batuto-api`, `batuto-web`, `batuto-db`.
+The fix, scoped deliberately narrowly to the Doppler layer:
+
+- **`dev`** is now exclusively for local development — a developer's own machine. Unchanged in shape: `dev` config with a `dev_personal` branch per developer, per Doppler's own convention (see "Local dev" below). Nothing shared or automated reads from `dev` anymore.
+- **`stg`** (new) is the target for everything that's shared, automated, or actually deployed but not yet production: the persistent staging Heroku app + Vercel Preview alias, PR review apps, and CI's own `build-and-test.yml`/`db-checks.yml` runs. Every `doppler-config: dev` in `.github/workflows/**`/`.github/actions/**` that fetched shared (non-personal) secrets moved to `doppler-config: stg`.
+- **`prd`** is unchanged.
+
+**Deliberately NOT changed as part of this**, since they're separate concerns from the Doppler config layer:
+- The git branch itself stays named `dev` (still today's default/trunk branch, still triggers the staging deploy) — a branch name and the Doppler environment it happens to deploy against don't have to match, and renaming the actual default branch is a much bigger, separate, higher-blast-radius operation (GitHub default-branch change, branch protection rules, every collaborator's local tracking branch) than the config-naming fix this addressed.
+- The shared Neon branch every ephemeral CI/PR clone forks from is still literally named/labeled `dev` — only the Doppler config used to fetch *its connection string* moved to `stg`, the branch itself wasn't renamed.
+- The persistent Heroku app / Vercel alias's own underlying names weren't changed — the `Staging` GitHub Environment (which already existed, already correctly named) is what actually scopes their `vars`/`secrets`, not their literal app name string.
+
+`main` is the production branch — a real Heroku prod app and the `Production` GitHub Environment already exist for it, ahead of `main` itself existing as a branch (see `quality-gates.md`'s CI section for where the other workflows' branch triggers will need to move once it does). A fifth, ephemeral tier — one Heroku app + one Vercel preview + one Neon branch per open PR — covers review apps; it isn't a persistent "environment" in the Doppler-config sense above, just a deploy target (and, per the fix above, now pulls its shared secrets from `stg` too).
+
+Each runnable package's dedicated Doppler project (see below) carries three environments: `dev` (with a `dev_personal` branch per developer, per Doppler's own convention), `stg`, and `prd`. Project naming follows the package name: `batuto-api`, `batuto-web`, `batuto-db`.
 
 ## Hosting targets
 
