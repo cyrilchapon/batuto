@@ -7,6 +7,7 @@ related:
   - engineering/overview/stack.md
   - engineering/modules/auth.md
   - engineering/modules/frontend-auth.md
+  - engineering/modules/logs.md
   - engineering/overview/quality-gates.md
 ---
 
@@ -201,7 +202,7 @@ Heroku Scheduler, not an in-process scheduler (e.g. node-cron living in the same
 
 ## Observability
 
-AppSignal covers error tracking, structured logging, and performance monitoring — one platform, not several. Wired via AppSignal's own Node.js integration on the backend and its JavaScript error tracking (Core Web Vitals + JS errors, auto-correlated with backend traces) on the frontend.
+AppSignal covers error tracking, structured logging, and performance monitoring — one platform, not several. Wired via AppSignal's own Node.js integration on the backend and its JavaScript error tracking (Core Web Vitals + JS errors, auto-correlated with backend traces) on the frontend. Backend logging goes through `@batuto/logs` (Pino + AppSignal's Pino transport) — see [logs.md](../modules/logs.md) for that package and why AppSignal's `environment` tag is set from `DOPPLER_ENVIRONMENT` (depends on the dev/stg/prd split below).
 
 **Decision history:** originally scoped as Sentry (errors) + Betterstack (logs), consolidated onto Betterstack alone once it shipped native Sentry-compatible error tracking (GA April 2026). Revisited on 2026-07-29, before any Betterstack wiring landed, after benchmarking Betterstack against Dash0, AppSignal, and Superlog on four criteria: full observability with frontend↔backend correlation, a modern/simple/standards-based (OpenTelemetry) product, and a genuinely free tier with sane pricing scaling. AppSignal won on a real forever-free tier plus already-shipped frontend↔backend correlation, over Dash0 (best OpenTelemetry-native architecture, but no permanent free tier) and Superlog (purest OTel play and genuinely new, but no frontend/RUM story at all — backend-only). Trade-off accepted: AppSignal's own OpenTelemetry support is comparatively recent (Aug 2025), layered onto ~10 years of proprietary agents, so it's less "OTel-native from the ground up" than Dash0. See the Linear "Tech stack" document for the full comparison.
 
