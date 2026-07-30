@@ -16,6 +16,11 @@
     "codegen:declaration": "react-router typegen"
   },
   "dependencies": {
+    "@appsignal/javascript": "^1.6.1",
+    "@appsignal/plugin-breadcrumbs-console": "^1.1.37",
+    "@appsignal/plugin-breadcrumbs-network": "^1.1.24",
+    "@appsignal/plugin-path-decorator": "^1.0.18",
+    "@appsignal/plugin-window-events": "^1.0.26",
     "@base-ui/react": "^1.6.0",
     "@batuto/contract": "workspace:*",
     "@batuto/env": "workspace:*",
