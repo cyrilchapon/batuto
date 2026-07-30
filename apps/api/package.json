@@ -20,11 +20,13 @@
     "@batuto/contract": "workspace:*",
     "@batuto/db": "workspace:*",
     "@batuto/env": "workspace:*",
+    "@batuto/logs": "workspace:*",
     "@orpc/openapi": "^1.14.8",
     "@orpc/server": "^1.14.8",
     "@orpc/standard-server-node": "^1.14.8",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "pino-http": "^11.0.0",
     "source-map-support": "^0.5.21",
     "zod": "^4.1.13"
   },

@@ -1,12 +1,10 @@
 import "./appsignal.js";
-import { Appsignal } from "@appsignal/nodejs";
 import { createApp } from "./app.js";
 import { appEnv } from "./env.js";
+import { logger } from "./logger.js";
 
 const app = createApp();
 
 app.listen(appEnv.PORT, () => {
-  const message = `api listening on http://localhost:${appEnv.PORT}`;
-  console.log(message);
-  Appsignal.logger("nodejs").info(message);
+  logger.info(`api listening on http://localhost:${appEnv.PORT}`);
 });

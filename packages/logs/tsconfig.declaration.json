@@ -1,0 +1,10 @@
+{
+  "extends": "@batuto/config-typescript/declaration.json",
+  "compilerOptions": {
+    "outDir": "dist-types",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}
