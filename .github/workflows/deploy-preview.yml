@@ -354,6 +354,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # git-commit-* pass the PR's real head commit through explicitly:
+      # this job's checkout is on actions/checkout's default pull_request
+      # ref (a synthetic merge commit, detached HEAD), which the Vercel
+      # CLI would otherwise read as-is - showing "HEAD" as the branch and
+      # a "Merge X into Y" message in the dashboard instead of the PR's
+      # actual commit. See deploy-web/action.yml's own input comments.
       - name: Deploy web
         id: deploy
         uses: ./.github/actions/deploy-web
@@ -366,6 +372,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           deployment-environment: pr-${{ github.event.pull_request.number }}-web
           pr-number: ${{ github.event.pull_request.number }}
+          git-commit-sha: ${{ github.event.pull_request.head.sha }}
+          git-commit-ref: ${{ github.event.pull_request.head.ref }}
+          git-commit-message: ${{ github.event.pull_request.title }}
+          git-pr-id: ${{ github.event.pull_request.number }}
 
   link-cors:
     name: Point the API review app back at its web preview URL
@@ -413,6 +423,40 @@ jobs:
             heroku apps:destroy "$APP_NAME" --confirm "$APP_NAME"
           else
             echo "$APP_NAME does not exist, nothing to destroy"
+          fi
+
+      # Vercel keeps every preview deployment indefinitely by default -
+      # unlike the Heroku app above, nothing else in this pipeline ever
+      # cleaned these up. Filters by branch (the REST API's list-deployments
+      # endpoint documents projectId/branch/teamId, not the meta-* filters
+      # the CLI's --meta flag uses, which aren't in the public reference)
+      # rather than by PR number directly - each PR's review app is built
+      # from a single branch for its whole lifetime, so this catches every
+      # deployment from every push to this PR, not just the latest.
+      - name: Delete Vercel preview deployments
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          deployment_ids=$(curl -sS -G "https://api.vercel.com/v7/deployments" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            --data-urlencode "teamId=$VERCEL_TEAM_ID" \
+            --data-urlencode "projectId=$VERCEL_PROJECT_ID" \
+            --data-urlencode "branch=$BRANCH" \
+            --data-urlencode "limit=100" \
+            | jq -r '.deployments[].uid')
+          if [ -z "$deployment_ids" ]; then
+            echo "No Vercel deployments found for branch $BRANCH, nothing to delete"
+          else
+            for id in $deployment_ids; do
+              echo "Deleting Vercel deployment $id"
+              curl -sS -G -X DELETE "https://api.vercel.com/v13/deployments/$id" \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                --data-urlencode "teamId=$VERCEL_TEAM_ID" \
+                || echo "Failed to delete $id, continuing"
+            done
           fi
 
       - name: Fetch Doppler secrets
