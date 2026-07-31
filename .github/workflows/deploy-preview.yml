@@ -23,6 +23,23 @@ on:
     branches: [dev]
     types: [opened, synchronize, reopened, closed]
 
+# Serializes every run for the same PR (deploy AND teardown) rather than
+# letting them run concurrently. Without this, a PR opened and closed
+# within seconds of each other (e.g. an automated backmerge) races the
+# deploy job against teardown: teardown's "does the app exist yet"
+# check can run and find nothing before deploy has actually created it,
+# exiting as a clean no-op — deploy then creates the app *after*
+# teardown already ran, orphaning it permanently (nothing re-triggers
+# teardown for an already-closed PR). Confirmed as the actual root
+# cause of a real orphaned batuto-api-pr-14 app via the workflow run
+# history (two runs 4 seconds apart) - not a hypothetical.
+# cancel-in-progress: false queues the later run instead of cancelling
+# the earlier one, so teardown always waits for an in-flight deploy to
+# finish before checking whether there's anything to destroy.
+concurrency:
+  group: deploy-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   deployments: write
