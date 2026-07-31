@@ -29,6 +29,31 @@ inputs:
     description: Pull request number to comment on; leave empty outside PR review deploys
     required: false
     default: ""
+  git-commit-sha:
+    description: >
+      Real commit SHA to attribute this deployment to. Only needed when the
+      caller's checkout isn't already on a real branch ref - production and
+      staging deploys (push events) already are, and can leave this empty to
+      let the Vercel CLI's own git autodetection work. PR review deploys
+      can't: actions/checkout's default ref for pull_request events is a
+      synthetic merge commit in detached HEAD, which the CLI would
+      otherwise read as-is - showing "HEAD" as the branch and a
+      "Merge X into Y" message in the Vercel dashboard instead of the PR's
+      actual commit.
+    required: false
+    default: ""
+  git-commit-ref:
+    description: Real branch name, paired with git-commit-sha (see its description)
+    required: false
+    default: ""
+  git-commit-message:
+    description: Real commit message, paired with git-commit-sha (see its description)
+    required: false
+    default: ""
+  git-pr-id:
+    description: Pull request number to attribute this deployment to (Vercel dashboard metadata, distinct from pr-number above which is for the PR comment)
+    required: false
+    default: ""
 
 outputs:
   preview-url:
@@ -82,6 +107,11 @@ runs:
     # genuinely do need to run from apps/web (a separate, unrelated
     # constraint — see that job's own comment), which is exactly why
     # this step can't just copy its cwd convention.
+    # git-commit-* inputs are passed through env: rather than interpolated
+    # directly into the script below - a PR title/commit message is
+    # attacker/user-controllable text, and direct ${{ }} interpolation into
+    # a run: body is a real shell-injection risk for that kind of input;
+    # env var values aren't re-parsed by the shell the same way.
     - name: Deploy prebuilt to Vercel
       id: deploy
       shell: bash
@@ -89,8 +119,17 @@ runs:
         VERCEL_TOKEN: ${{ inputs.vercel-token }}
         VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
         VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+        GIT_COMMIT_SHA: ${{ inputs.git-commit-sha }}
+        GIT_COMMIT_REF: ${{ inputs.git-commit-ref }}
+        GIT_COMMIT_MESSAGE: ${{ inputs.git-commit-message }}
+        GIT_PR_ID: ${{ inputs.git-pr-id }}
       run: |
-        url=$(yarn vercel deploy --prebuilt ${{ inputs.production == 'true' && '--prod' || '' }} --token="$VERCEL_TOKEN")
+        meta_args=()
+        [ -n "$GIT_COMMIT_SHA" ] && meta_args+=(--meta "githubCommitSha=$GIT_COMMIT_SHA")
+        [ -n "$GIT_COMMIT_REF" ] && meta_args+=(--meta "githubCommitRef=$GIT_COMMIT_REF")
+        [ -n "$GIT_COMMIT_MESSAGE" ] && meta_args+=(--meta "githubCommitMessage=$GIT_COMMIT_MESSAGE")
+        [ -n "$GIT_PR_ID" ] && meta_args+=(--meta "githubPrId=$GIT_PR_ID")
+        url=$(yarn vercel deploy --prebuilt ${{ inputs.production == 'true' && '--prod' || '' }} --token="$VERCEL_TOKEN" "${meta_args[@]}")
         echo "url=$url" >> "$GITHUB_OUTPUT"
 
     - name: Notify GitHub deployment
