@@ -1,0 +1,9 @@
+{
+  "name": "claude-session-hooks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone deps for .claude/hooks scripts - deliberately outside the yarn workspaces glob so it never touches the app's own dependency tree.",
+  "dependencies": {
+    "https-proxy-agent": "^7.0.6"
+  }
+}
