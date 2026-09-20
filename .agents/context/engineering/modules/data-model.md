@@ -4,6 +4,7 @@ summary: How the Linear data-model document is translated into Prisma — naming
 category: engineering
 last_updated: 2026-09-20
 related:
+  - engineering/overview/conventions.md
   - product/data-modeling-convention.md
   - engineering/modules/database-migrations.md
   - domain/multi-band.md
@@ -49,7 +50,7 @@ pupitre     Pupitre     @relation(fields: [pupitreId, bandId], references: [id, 
 validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById, bandId], references: [id, bandId], onDelete: SetNull)
 ```
 
-The redundant column is the point, not a concession: correct referential integrity is worth more than avoiding a denormalised key, and routing every relation through the same physical column is what makes "same band" structurally true rather than merely checked. Expect to do the same in Layer 2, where `AvailabilityResponse` and `PupitreAssignment` each reference an event, a membership and a pupitre that must all agree on their band.
+The redundant column is the point, not a concession, and the reasoning generalises well beyond bands — it is written up as a standing principle in [conventions.md](../overview/conventions.md#scoping-keys-travel-through-relations--integrity-over-normalization). Expect to do the same in Layer 2, where `AvailabilityResponse` and `PupitreAssignment` each reference an event, a membership and a pupitre that must all agree on their band.
 
 An optional composite foreign key behaves correctly without extra machinery: Postgres's default `MATCH SIMPLE` skips the check entirely when any of its columns is NULL, so `validatedById IS NULL` means "no validator", not a violation.
 
@@ -87,7 +88,7 @@ db.memberInstrument.update({
 
 ## What the schema deliberately does not enforce
 
-- **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. It is not modeled anywhere yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). It belongs in v0 CORE; it is not in BAT-38's scope, and no other v0 ticket currently covers it.
+- **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. Not modeled yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). Tracked as [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent) in v0 CORE, blocking BAT-45.
 
 ## The bootstrap placeholder was removed forward, not erased
 
