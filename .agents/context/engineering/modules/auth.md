@@ -2,8 +2,9 @@
 title: Auth module (@batuto/auth)
 summary: Clerk auth is wired as a thin oRPC-native middleware on top of @clerk/backend, not Clerk's Express SDK
 category: engineering
-last_updated: 2026-07-21
+last_updated: 2026-09-20
 related:
+  - engineering/modules/api-procedures.md
   - engineering/modules/env-validation.md
   - engineering/overview/infra-and-envs.md
   - engineering/overview/stack.md
@@ -53,7 +54,9 @@ Applied per-procedure via `.use(requireAuth)` — contract-visible, typed, and u
 
 ## Proof procedure
 
-`privatePing` (`GET /private/ping`, defined in `packages/contract/src/private-ping.ts`) exists solely to prove the middleware blocks unauthenticated requests end-to-end (`apps/api/src/auth.test.ts` asserts a 401 with `code: "UNAUTHORIZED"`). Unlike the original version of this proof (a plain Express route bypassing the contract entirely), this is a real oRPC procedure using `.use(requireAuth)` — the actual pattern future auth-gated business procedures (BAT-27, BAT-29, ...) should copy, not a throwaway shape to replace later.
+`privatePing` (`GET /private/ping`, defined in `packages/contract/src/private-ping.ts`) started as a proof that the middleware blocks unauthenticated requests end-to-end (`apps/api/src/auth.test.ts` asserts a 401 with `code: "UNAUTHORIZED"`). Unlike the original version of that proof (a plain Express route bypassing the contract entirely), it is a real oRPC procedure using `.use(requireAuth)` — the actual pattern future auth-gated business procedures (BAT-27, BAT-29, ...) should copy, not a throwaway shape to replace later.
+
+BAT-38 removed the rest of the bootstrap proof surface (`hello`, `privateHello`, `boom`) and deliberately kept this one, because it stopped being only a proof: it is the sole regression test for `requireAuth`, and the only live consumer of the frontend's oRPC client. Removing it would have left `apps/web/app/lib/orpc.ts` unreferenced — which Knip would then flag for deletion, losing BAT-16's wiring rather than just an example. Retire it once real authenticated procedures cover both, not before. [api-procedures.md](api-procedures.md) has the end-to-end recipe it exemplifies.
 
 ## Frontend is a separate concern
 

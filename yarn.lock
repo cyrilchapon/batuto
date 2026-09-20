@@ -530,7 +530,6 @@ __metadata:
   resolution: "@batuto/contract@workspace:packages/contract"
   dependencies:
     "@batuto/config-typescript": "workspace:*"
-    "@batuto/dtos": "workspace:*"
     "@orpc/contract": "npm:^1.14.8"
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     typescript: "npm:^5.9.3"
@@ -554,7 +553,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@batuto/dtos@workspace:*, @batuto/dtos@workspace:packages/dtos":
+"@batuto/dtos@workspace:packages/dtos":
   version: 0.0.0-use.local
   resolution: "@batuto/dtos@workspace:packages/dtos"
   dependencies:
@@ -562,7 +561,6 @@ __metadata:
     "@typescript/native-preview": "npm:^7.0.0-dev.20260707.2"
     typescript: "npm:^5.9.3"
     vitest: "npm:^3.2.4"
-    zod: "npm:^4.1.13"
   languageName: unknown
   linkType: soft
 
