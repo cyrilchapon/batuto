@@ -7,10 +7,153 @@ datasource db {
   provider = "postgresql"
 }
 
-// Placeholder model, proves the migration + client generation pipeline
-// end-to-end. Real domain models come later (see .agents/context/domain/).
-model HelloWorld {
-  id        String   @id @default(cuid())
-  message   String
+// ---------------------------------------------------------------------------
+// Layer 1 — identity, bands, memberships, pupitres (BAT-38).
+//
+// Translated from the "Data model — v0 CORE (Layer 1 + Layer 2)" Linear
+// document. Every band-scoped entity hangs off `Membership`, the explicit
+// User x Band pivot — never directly off `User`. See
+// .agents/context/domain/multi-band.md for why band scoping is present from
+// the very first migration rather than retrofitted.
+// ---------------------------------------------------------------------------
+
+/// The three decision-mode templates a band's readiness rules can follow. A
+/// bare type at this layer: the parameter shape (thresholds, min/max,
+/// exceptions) and the band -> band+type -> event cascade belong to Layer 3.
+/// See .agents/context/domain/readiness-rules.md.
+enum DecisionRuleTemplateType {
+  hierarchical
+  consensual
+  threshold
+}
+
+/// Group roles carry musical/decision authority inside one band. They are
+/// deliberately NOT a generic permission system (a conductor is not an admin),
+/// and their cardinality is free: a band may have none, one, or several of
+/// each. A plain musician simply holds no GroupRole.
+/// See .agents/context/domain/role-hierarchy.md.
+enum GroupRoleType {
+  conductor
+  relay
+}
+
+/// Per-member, per-pupitre autonomy tier. Modeled now; *weighting* readiness
+/// by tier is v1, not v0. The pairing rule it feeds is always computed per
+/// event, never stored on the member.
+enum MemberInstrumentTier {
+  debutant
+  non_autonome
+  autonome
+  referent
+}
+
+/// A person. Clerk owns identity and nothing else: `clerkUserId` is the only
+/// link to it, while band membership, musical role and event ownership all
+/// live here in Postgres. See .agents/context/engineering/modules/auth.md.
+model User {
+  id          String   @id @default(uuid(7))
+  clerkUserId String   @unique
+  name        String
+  email       String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships Membership[]
+}
+
+model Band {
+  id                       String                   @id @default(uuid(7))
+  name                     String
+  decisionRuleTemplateType DecisionRuleTemplateType
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+
+  memberships Membership[]
+  pupitres    Pupitre[]
+  inviteCodes InviteCode[]
+}
+
+/// The explicit User x Band pivot. Everything band-scoped hangs off this, so
+/// the same user can hold entirely independent roles, sections and tiers in
+/// each band they belong to.
+model Membership {
+  id        String   @id @default(uuid(7))
+  userId    String
+  bandId    String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
+
+  groupRoles                 GroupRole[]
+  memberInstruments          MemberInstrument[] @relation("MemberInstrumentMember")
+  validatedMemberInstruments MemberInstrument[] @relation("MemberInstrumentValidator")
+
+  @@unique([userId, bandId])
+  @@index([bandId])
+}
+
+model GroupRole {
+  id           String        @id @default(uuid(7))
+  membershipId String
+  type         GroupRoleType
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, type])
+}
+
+/// A section, as that band names it (surdo, caixa, repique for a batucada).
+/// A per-band catalog, never a global enum: section vocabularies differ
+/// entirely from one genre of band to the next.
+model Pupitre {
+  id        String   @id @default(uuid(7))
+  bandId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
+
+  memberInstruments MemberInstrument[]
+
+  @@unique([bandId, name])
+}
+
+/// An instrument/section a member plays, at a given autonomy tier. Carries two
+/// distinct relations to Membership: the member who declares it, and the
+/// (necessarily different) member who validates it.
+model MemberInstrument {
+  id            String               @id @default(uuid(7))
+  membershipId  String
+  pupitreId     String
+  tier          MemberInstrumentTier
+  validated     Boolean              @default(false)
+  validatedById String?
+  validatedAt   DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  membership  Membership  @relation("MemberInstrumentMember", fields: [membershipId], references: [id], onDelete: Cascade)
+  pupitre     Pupitre     @relation(fields: [pupitreId], references: [id], onDelete: Cascade)
+  validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById], references: [id], onDelete: SetNull)
+
+  @@unique([membershipId, pupitreId])
+  @@index([pupitreId])
+  @@index([validatedById])
+}
+
+model InviteCode {
+  id        String   @id @default(uuid(7))
+  bandId    String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
+
+  @@index([bandId])
 }
