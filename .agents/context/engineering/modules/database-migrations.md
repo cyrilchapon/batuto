@@ -1,6 +1,6 @@
 ---
 title: Database migration doctrine
-summary: Migrations are append-only and small — one logical change per migration, generated from the schema rather than hand-written, and validated against a real database before pushing
+summary: Migrations are append-only and small — one logical change per migration, generated from the schema, validated against a real database before pushing, and any hand-written SQL kept alive by a register plus a test
 category: engineering
 last_updated: 2026-09-20
 related:
@@ -40,9 +40,36 @@ Edit `schema.prisma`, then let Prisma produce the SQL:
 
 Then **read the generated SQL before committing it**. Generation is not review: Prisma will happily generate a column drop, a table rewrite, or a `NOT NULL` addition with no default that cannot succeed against existing rows.
 
-Hand-written SQL is for the things Prisma has no syntax for — CHECK constraints, triggers, partial indexes, data backfills, and the odd SQL feature Prisma's emitter predates. This is Prisma's own prescribed path, not a hack around it: [Customizing migrations](https://www.prisma.io/docs/orm/prisma-migrate/workflows/customizing-migrations) says to generate with `prisma migrate dev --create-only`, edit, then apply (the `migrate diff --script` route above is its no-database equivalent). Edit the generated file rather than writing a whole migration by hand, and **comment why, in the migration itself**, because `prisma migrate diff` cannot see the difference: `check:schema` stays green whether the hand-written part is there or not, so nothing mechanical will tell you when a regeneration quietly drops it. Pair every such edit with a test that fails if it disappears.
+## Hand-written SQL, and the register that keeps it alive
 
-`20260920071200_pupitres_and_member_instruments/migration.sql` is the worked example: Prisma emits a bare `ON DELETE SET NULL` for a composite foreign key whose band column is required, which would fail at runtime; the migration hand-writes Postgres 15+'s column-list form (`ON DELETE SET NULL ("validatedById")`) so only the nullable column is cleared.
+Some things Prisma's schema language cannot express — CHECK constraints, triggers, partial indexes, data backfills, and the odd SQL feature its emitter predates. Writing those by hand is Prisma's own prescribed path, not a hack around it: [Customizing migrations](https://www.prisma.io/docs/orm/prisma-migrate/workflows/customizing-migrations) says to generate with `prisma migrate dev --create-only`, edit, then apply (the `migrate diff --script` route above is its no-database equivalent).
+
+The danger is not writing it. The danger is **losing it six months later**, because `prisma migrate diff` cannot see it: `check:schema` is equally green with or without the hand-written part, so regenerating a migration silently drops it and no gate objects. Three rules, and they are not optional:
+
+1. **Edit the generated file, never author a whole migration by hand.** Append the statement at the end, under a comment saying what it does and *why Prisma cannot*.
+2. **Pair it with a test that fails if it disappears.** Not a test of the happy path — a test that exercises precisely the behaviour the statement provides. This is the only real guard; treat an unguarded hand-written statement as already lost.
+3. **Add a row to the register below, in the same commit.** A regeneration of any migration listed here has to re-apply its hand-written part by hand.
+
+### Register of hand-written SQL
+
+| Migration | Statement | Why Prisma can't | Guarded by |
+|---|---|---|---|
+| `20260920071200_pupitres_and_member_instruments` | `ON DELETE SET NULL ("validatedById")` on `MemberInstrument_validatedById_bandId_fkey` | Prisma emits a bare `ON DELETE SET NULL`, which would also clear the required `bandId` and fail at runtime. Postgres 15+ takes a column list; Prisma has no syntax for it ([#8264](https://github.com/prisma/prisma/issues/8264), open since 2021) | `apps/api/src/db.test.ts` — "keeps a validated instrument, minus its validator, when the validator leaves" |
+
+When a row's upstream issue is finally fixed, that is the moment to delete the hand-written statement, the row, and probably the test's comment — not before, and not silently.
+
+### A database-level fix stays at the database level
+
+Worth being explicit, because it is easy to assume otherwise: a referential action is only consulted when the **database** changes a referenced row — here, when a `Membership` is deleted. It does nothing for an equivalent operation the *client* performs itself.
+
+Concretely, `validatedBy: { disconnect: true }` still fails against this schema even with the column-list `SET NULL` in place, because Prisma plans the disconnect as a write that nulls every column of the composite relation, `bandId` included, and rejects it before any SQL reaches Postgres ([#8403](https://github.com/prisma/prisma/issues/8403)). The cascade and the disconnect are two different layers; fixing one says nothing about the other. Verified on the current schema:
+
+```
+1. client-side disconnect  -> Null constraint violation
+2. delete the validator's membership -> survives, validatedById null, bandId intact
+```
+
+The client-side equivalent has to be written as a scalar update — see [data-model.md](data-model.md#gotcha-clear-a-validator-through-the-scalar-never-disconnect).
 
 ## Write migrations that can run against real rows
 

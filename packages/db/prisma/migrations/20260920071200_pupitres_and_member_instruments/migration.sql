@@ -62,6 +62,9 @@ ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_pupitreId_bandId
 -- cleared when their membership goes — the instrument and its band survive.
 -- Regenerating this migration would silently drop the column list; the
 -- "keeps a validated instrument, minus its validator" case in
--- apps/api/src/db.test.ts is what catches that.
+-- apps/api/src/db.test.ts is what catches that. Registered in
+-- .agents/context/engineering/modules/database-migrations.md — keep the two
+-- in step. This fixes the database-side cascade only: `disconnect` on that
+-- relation still fails client-side (prisma/prisma#8403).
 ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_validatedById_bandId_fkey" FOREIGN KEY ("validatedById", "bandId") REFERENCES "Membership"("id", "bandId") ON DELETE SET NULL ("validatedById") ON UPDATE CASCADE;
 
