@@ -127,6 +127,33 @@ describe("Layer 1 schema", () => {
     expect(kept.bandId).toBe(a.bandId);
   });
 
+  // prisma/prisma#8403: `disconnect` on a composite relation nulls every one of
+  // its columns, bandId included, so clearing a validator has to go through the
+  // scalar. Locking the supported path in, since it is not the obvious one.
+  it("clears a validator through the scalar, leaving the band intact", async () => {
+    const validator = await createMember("clearer-a", a.bandId);
+    const declarer = await createMember("declarer-a", a.bandId);
+    const instrument = await db.memberInstrument.create({
+      data: {
+        tier: "non_autonome",
+        validated: true,
+        membership: { connect: { id: declarer.id } },
+        pupitre: { connect: { id: a.pupitreId } },
+        validatedBy: { connect: { id: validator.id } },
+      },
+    });
+
+    const cleared = await db.memberInstrument.update({
+      where: { id: instrument.id },
+      data: { validated: false, validatedById: null, validatedAt: null },
+    });
+
+    expect(cleared.validatedById).toBeNull();
+    expect(cleared.bandId).toBe(a.bandId);
+
+    await db.memberInstrument.delete({ where: { id: instrument.id } });
+  });
+
   it("scopes a pupitre name to its own band", async () => {
     // Band a already has a "surdo"; a second one in the same band is a duplicate.
     await expectRejectedByDatabase(

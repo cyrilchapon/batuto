@@ -63,6 +63,28 @@ ON DELETE SET NULL ("validatedById")
 
 Only the validator is cleared when their membership is deleted; the instrument and its band survive. `check:schema` stays green — `migrate diff` does not distinguish the column list from a bare `SET NULL` — which cuts both ways: regenerating that migration would silently drop the column list and nothing mechanical would object. The "keeps a validated instrument, minus its validator" case in `apps/api/src/db.test.ts` is what actually catches it.
 
+Hand-editing is not a workaround around Prisma so much as the path Prisma itself prescribes for anything its schema language cannot express (`prisma migrate dev --create-only`, then edit, then apply — see [Customizing migrations](https://www.prisma.io/docs/orm/prisma-migrate/workflows/customizing-migrations)). This was checked rather than assumed, in September 2026 against Prisma 7.8:
+
+- [#8264](https://github.com/prisma/prisma/issues/8264) (open since July 2021) — `SetNull` on a composite key nulls every column, including one that is required. Exactly this case.
+- [#8403](https://github.com/prisma/prisma/issues/8403) (open since July 2021) — the same thing on the client side, for `disconnect`. See the gotcha below.
+- [#16439](https://github.com/prisma/prisma/issues/16439) (closed, 4.7.0) — all that changed is that PostgreSQL now *warns* instead of refusing the schema. It lets you declare the intent; it does not emit the right SQL.
+- [#3388](https://github.com/prisma/prisma/issues/3388) (open since December 2019) — CHECK constraints, same story, labelled "has-stopgap".
+
+**No plugin fixes this, and it isn't for lack of looking.** Prisma's two extension points — client extensions and generators — act on queries and on generated artifacts; neither can touch the SQL Prisma Migrate emits, so a third-party package has nowhere to hook in. ZenStack, the main community layer over Prisma, inherits the limitation and prescribes the same hand-edit. Verified directly against Prisma 7.8: `@@check` is rejected (`Attribute not known`), and there is no per-column argument on `onDelete` (`No such argument`).
+
+### Gotcha: clear a validator through the scalar, never `disconnect`
+
+`validatedBy: { disconnect: true }` throws a null-constraint violation, because Prisma nulls every column of the composite relation — `bandId` included. That is [#8403](https://github.com/prisma/prisma/issues/8403), reproduced on this schema. The supported way to un-validate an instrument is the scalar:
+
+```ts
+db.memberInstrument.update({
+  where: { id },
+  data: { validated: false, validatedById: null, validatedAt: null },
+});
+```
+
+`bandId` is left alone and the write succeeds. Worth knowing before [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) implements validation withdrawal; `db.test.ts` locks the supported path in.
+
 ## What the schema deliberately does not enforce
 
 - **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. It is not modeled anywhere yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). It belongs in v0 CORE; it is not in BAT-38's scope, and no other v0 ticket currently covers it.
