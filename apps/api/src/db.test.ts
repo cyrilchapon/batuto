@@ -1,87 +1,177 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 
-// Proves the Layer 1 migration (BAT-38) is actually applied and that the
-// generated client round-trips it: the band-scoped chain
-// Band -> Membership -> MemberInstrument -> Pupitre, plus the two distinct
-// Membership relations MemberInstrument carries (declared by / validated by).
-// This replaces the placeholder round trip BAT-23's hello handler used to do.
+// Proves the Layer 1 migrations are applied and that the generated client
+// round-trips them — including the composite-key band scoping, which is the
+// one invariant a reviewer cannot check by reading schema.prisma alone.
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const bandName = (label: string) => `Test band ${label} ${suffix}`;
+
+// A rejection only means something here if the database produced it. A
+// PrismaClientValidationError would mean the client refused the shape before
+// the query ever ran, which proves nothing about the constraints under test.
+const expectRejectedByDatabase = async (query: Promise<unknown>) => {
+  const error = await query.then(
+    () => null,
+    (caught: unknown) => caught,
+  );
+
+  expect(error).toBeInstanceOf(Error);
+  expect((error as Error).name).not.toBe("PrismaClientValidationError");
+};
+
+type Fixture = {
+  bandId: string;
+  pupitreId: string;
+  conductorId: string;
+  musicianId: string;
+};
+
+const createMember = (label: string, bandId: string) =>
+  db.membership.create({
+    data: {
+      band: { connect: { id: bandId } },
+      user: {
+        create: {
+          clerkUserId: `user_${label}_${suffix}`,
+          name: label,
+          email: `${label}@${suffix}.test`,
+        },
+      },
+    },
+  });
+
+const setUpBand = async (label: string, pupitreName: string): Promise<Fixture> => {
+  const band = await db.band.create({
+    data: {
+      name: bandName(label),
+      decisionRuleTemplateType: "hierarchical",
+      pupitres: { create: { name: pupitreName } },
+      inviteCodes: { create: { code: `invite-${label}-${suffix}` } },
+    },
+    include: { pupitres: true, inviteCodes: true },
+  });
+
+  const pupitre = band.pupitres.at(0);
+  if (!pupitre) {
+    throw new Error("expected the nested pupitre create to have returned a row");
+  }
+  expect(band.inviteCodes).toHaveLength(1);
+
+  const conductor = await createMember(`conductor-${label}`, band.id);
+  const musician = await createMember(`musician-${label}`, band.id);
+
+  return {
+    bandId: band.id,
+    pupitreId: pupitre.id,
+    conductorId: conductor.id,
+    musicianId: musician.id,
+  };
+};
+
+let a: Fixture;
+let b: Fixture;
 
 describe("Layer 1 schema", () => {
+  beforeAll(async () => {
+    a = await setUpBand("a", "surdo");
+    b = await setUpBand("b", "caixa");
+  });
+
   afterAll(async () => {
-    // Everything below cascades from these two roots.
-    await db.band.deleteMany({ where: { name: `Test band ${suffix}` } });
+    // Memberships, pupitres and instruments all cascade from these two.
+    await db.band.deleteMany({ where: { name: { in: [bandName("a"), bandName("b")] } } });
     await db.user.deleteMany({ where: { email: { endsWith: `${suffix}.test` } } });
     await db.$disconnect();
   });
 
-  it("round-trips a band, its members and their declared instruments", async () => {
-    const band = await db.band.create({
+  it("round-trips a declared instrument and the member who validated it", async () => {
+    const instrument = await db.memberInstrument.create({
       data: {
-        name: `Test band ${suffix}`,
-        decisionRuleTemplateType: "hierarchical",
-        pupitres: { create: { name: "surdo" } },
-        inviteCodes: { create: { code: `invite-${suffix}` } },
+        tier: "debutant",
+        validated: true,
+        validatedAt: new Date(),
+        membership: { connect: { id: a.musicianId } },
+        pupitre: { connect: { id: a.pupitreId } },
+        validatedBy: { connect: { id: a.conductorId } },
       },
-      include: { pupitres: true, inviteCodes: true },
+      include: { pupitre: true, validatedBy: true },
     });
 
-    const pupitre = band.pupitres.at(0);
-    if (!pupitre) {
-      throw new Error("expected the nested pupitre create to have returned a row");
-    }
-    expect(band.inviteCodes).toHaveLength(1);
+    expect(instrument.bandId).toBe(a.bandId);
+    expect(instrument.tier).toBe("debutant");
+    expect(instrument.pupitre.name).toBe("surdo");
+    expect(instrument.validatedBy?.id).toBe(a.conductorId);
+  });
 
-    const conductor = await db.membership.create({
+  it("keeps a validated instrument, minus its validator, when the validator leaves", async () => {
+    const leaver = await createMember("leaver-a", a.bandId);
+    const instrument = await db.memberInstrument.create({
       data: {
-        band: { connect: { id: band.id } },
-        user: {
-          create: {
-            clerkUserId: `user_conductor_${suffix}`,
-            name: "Conductor",
-            email: `conductor@${suffix}.test`,
-          },
-        },
-        groupRoles: { create: { type: "conductor" } },
+        tier: "autonome",
+        validated: true,
+        membership: { connect: { id: a.conductorId } },
+        pupitre: { connect: { id: a.pupitreId } },
+        validatedBy: { connect: { id: leaver.id } },
       },
-      include: { groupRoles: true },
     });
 
-    expect(conductor.groupRoles.map((role) => role.type)).toEqual(["conductor"]);
+    await db.membership.delete({ where: { id: leaver.id } });
 
-    const musician = await db.membership.create({
-      data: {
-        band: { connect: { id: band.id } },
-        user: {
-          create: {
-            clerkUserId: `user_musician_${suffix}`,
-            name: "Musician",
-            email: `musician@${suffix}.test`,
-          },
-        },
-        memberInstruments: {
-          create: {
-            pupitre: { connect: { id: pupitre.id } },
-            tier: "debutant",
-            validated: true,
-            validatedAt: new Date(),
-            validatedBy: { connect: { id: conductor.id } },
-          },
-        },
-      },
-      include: { memberInstruments: { include: { pupitre: true, validatedBy: true } } },
-    });
-
-    const instrument = musician.memberInstruments.at(0);
-    expect(instrument?.tier).toBe("debutant");
-    expect(instrument?.pupitre.name).toBe("surdo");
-    expect(instrument?.validatedBy?.id).toBe(conductor.id);
+    const kept = await db.memberInstrument.findUniqueOrThrow({ where: { id: instrument.id } });
+    expect(kept.validated).toBe(true);
+    expect(kept.validatedById).toBeNull();
+    expect(kept.validatorBandId).toBeNull();
   });
 
   it("scopes a pupitre name to its own band", async () => {
-    const band = await db.band.findFirstOrThrow({ where: { name: `Test band ${suffix}` } });
+    // Band a already has a "surdo"; a second one in the same band is a duplicate.
+    await expectRejectedByDatabase(
+      db.pupitre.create({ data: { bandId: a.bandId, name: "surdo" } }),
+    );
 
-    await expect(db.pupitre.create({ data: { bandId: band.id, name: "surdo" } })).rejects.toThrow();
+    // The same name in another band is fine — pupitres are a per-band catalog.
+    const elsewhere = await db.pupitre.create({ data: { bandId: b.bandId, name: "surdo" } });
+    expect(elsewhere.bandId).toBe(b.bandId);
+  });
+
+  describe("band scoping is enforced by the database, not just by callers", () => {
+    it("rejects an instrument pairing a membership with another band's pupitre", async () => {
+      await expectRejectedByDatabase(
+        db.memberInstrument.create({
+          data: {
+            tier: "debutant",
+            membership: { connect: { id: a.musicianId } },
+            pupitre: { connect: { id: b.pupitreId } },
+          },
+        }),
+      );
+    });
+
+    it("rejects an instrument pairing a pupitre with another band's membership", async () => {
+      await expectRejectedByDatabase(
+        db.memberInstrument.create({
+          data: {
+            tier: "debutant",
+            membership: { connect: { id: b.musicianId } },
+            pupitre: { connect: { id: a.pupitreId } },
+          },
+        }),
+      );
+    });
+
+    it("rejects a validator from another band", async () => {
+      await expectRejectedByDatabase(
+        db.memberInstrument.create({
+          data: {
+            tier: "debutant",
+            validated: true,
+            membership: { connect: { id: a.musicianId } },
+            pupitre: { connect: { id: a.pupitreId } },
+            validatedBy: { connect: { id: b.conductorId } },
+          },
+        }),
+      );
+    });
   });
 });

@@ -4,9 +4,6 @@ CREATE TYPE "DecisionRuleTemplateType" AS ENUM ('hierarchical', 'consensual', 't
 -- CreateEnum
 CREATE TYPE "GroupRoleType" AS ENUM ('conductor', 'relay');
 
--- CreateEnum
-CREATE TYPE "MemberInstrumentTier" AS ENUM ('debutant', 'non_autonome', 'autonome', 'referent');
-
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -53,32 +50,6 @@ CREATE TABLE "GroupRole" (
 );
 
 -- CreateTable
-CREATE TABLE "Pupitre" (
-    "id" TEXT NOT NULL,
-    "bandId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Pupitre_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "MemberInstrument" (
-    "id" TEXT NOT NULL,
-    "membershipId" TEXT NOT NULL,
-    "pupitreId" TEXT NOT NULL,
-    "tier" "MemberInstrumentTier" NOT NULL,
-    "validated" BOOLEAN NOT NULL DEFAULT false,
-    "validatedById" TEXT,
-    "validatedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "MemberInstrument_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "InviteCode" (
     "id" TEXT NOT NULL,
     "bandId" TEXT NOT NULL,
@@ -105,18 +76,6 @@ CREATE UNIQUE INDEX "Membership_userId_bandId_key" ON "Membership"("userId", "ba
 CREATE UNIQUE INDEX "GroupRole_membershipId_type_key" ON "GroupRole"("membershipId", "type");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Pupitre_bandId_name_key" ON "Pupitre"("bandId", "name");
-
--- CreateIndex
-CREATE INDEX "MemberInstrument_pupitreId_idx" ON "MemberInstrument"("pupitreId");
-
--- CreateIndex
-CREATE INDEX "MemberInstrument_validatedById_idx" ON "MemberInstrument"("validatedById");
-
--- CreateIndex
-CREATE UNIQUE INDEX "MemberInstrument_membershipId_pupitreId_key" ON "MemberInstrument"("membershipId", "pupitreId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "InviteCode_code_key" ON "InviteCode"("code");
 
 -- CreateIndex
@@ -130,18 +89,6 @@ ALTER TABLE "Membership" ADD CONSTRAINT "Membership_bandId_fkey" FOREIGN KEY ("b
 
 -- AddForeignKey
 ALTER TABLE "GroupRole" ADD CONSTRAINT "GroupRole_membershipId_fkey" FOREIGN KEY ("membershipId") REFERENCES "Membership"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Pupitre" ADD CONSTRAINT "Pupitre_bandId_fkey" FOREIGN KEY ("bandId") REFERENCES "Band"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_membershipId_fkey" FOREIGN KEY ("membershipId") REFERENCES "Membership"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_pupitreId_fkey" FOREIGN KEY ("pupitreId") REFERENCES "Pupitre"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_validatedById_fkey" FOREIGN KEY ("validatedById") REFERENCES "Membership"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "InviteCode" ADD CONSTRAINT "InviteCode_bandId_fkey" FOREIGN KEY ("bandId") REFERENCES "Band"("id") ON DELETE CASCADE ON UPDATE CASCADE;

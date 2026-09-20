@@ -5,6 +5,7 @@ category: engineering
 last_updated: 2026-09-20
 related:
   - product/data-modeling-convention.md
+  - engineering/modules/database-migrations.md
   - domain/multi-band.md
   - domain/role-hierarchy.md
   - domain/readiness-rules.md
@@ -16,7 +17,7 @@ related:
 
 The canonical description of *what* is modeled lives in the Linear project document ["Data model — v0 CORE (Layer 1 + Layer 2)"](https://linear.app/cyc-personal/document/data-model-v0-core-layer-1-layer-2-9f90bb8097c7), and the process for evolving it is [data-modeling-convention.md](../../product/data-modeling-convention.md). This document covers only the other half: how that model is expressed in `packages/db/prisma/schema.prisma`, and which invariants the database does and does not enforce.
 
-Layer 1 (`User`, `Band`, `Membership`, `GroupRole`, `Pupitre`, `MemberInstrument`, `InviteCode`) landed with [BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres) as the repo's first real migration, replacing the `HelloWorld` placeholder and its `20260716145002_init` migration.
+Layer 1 (`User`, `Band`, `Membership`, `GroupRole`, `Pupitre`, `MemberInstrument`, `InviteCode`) landed with [BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres) as the repo's first real schema, across three migrations on top of the `HelloWorld` bootstrap placeholder. How migrations themselves are written and validated is [database-migrations.md](database-migrations.md).
 
 ## Schema conventions
 
@@ -38,21 +39,29 @@ An ER diagram carries entities and relations; uniqueness and indexing are implem
 - One `GroupRole` per `(membershipId, type)` — this bounds *duplication*, not cardinality. A band may still have zero, one, or several conductors, which [role-hierarchy.md](../../domain/role-hierarchy.md) requires.
 - Indexes on the band-scoped foreign keys that get queried directly (`Membership.bandId`, `InviteCode.bandId`, `MemberInstrument.pupitreId` / `validatedById`).
 
+## Band scoping is enforced by the database
+
+Nothing may pair a `Membership` in band A with a `Pupitre` — or a validator — in band B. That is enforced, not merely expected of callers: every foreign key out of `MemberInstrument` is composite, pointing at `(id, bandId)` on `Membership` and `Pupitre` (each of which carries an `@@unique([id, bandId])` for that purpose).
+
+Making that work with Prisma costs three band columns on `MemberInstrument` — `bandId`, `pupitreBandId`, `validatorBandId` — one per composite foreign key, because of two hard limits worth knowing before modelling Layer 2 the same way:
+
+- **Prisma cannot write a relation scalar shared by two relations.** Point both the `membership` and `pupitre` relations at one `bandId` and the schema still validates, the client still typechecks, and every insert then fails at runtime with a null-constraint violation on that column — the query engine treats a shared scalar as unwritable, both through nested `connect` and through the unchecked all-scalars form. Each composite foreign key needs its own column.
+- **Prisma cannot `SET NULL` a column a non-nullable relation also uses.** `validatedBy` has to be clearable when a validator's membership is deleted (losing the validator must not delete the validated instrument), which rules out reusing the required `bandId` for it.
+
+What ties those columns back together is two CHECK constraints (`pupitreBandId = bandId`, and `validatorBandId` null-or-equal to `bandId`). Prisma has no syntax for CHECK constraints, so they are hand-written at the end of `20260920071200_pupitres_and_member_instruments/migration.sql`. `prisma migrate diff` neither generates nor notices them, so `check:schema` stays green with or without them — which is exactly why they need carrying forward by hand if that table is ever rebuilt, and why `apps/api/src/db.test.ts` tries to violate all of it.
+
 ## What the schema deliberately does not enforce
 
-Both of these are real holes, left open on purpose rather than by oversight:
+- **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. It is not modeled anywhere yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). It belongs in v0 CORE; it is not in BAT-38's scope, and no other v0 ticket currently covers it.
 
-- **Cross-band referential integrity.** Nothing at the database level stops a `MemberInstrument` from joining a `Membership` in band A to a `Pupitre` in band B, or from naming a validator who belongs to a different band. Enforcing it would mean denormalizing `bandId` onto the child tables and using composite foreign keys throughout. For now it is the API layer's job — and it is the kind of check the Band/membership API ([BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api)) has to get right.
-- **Section leader has no `GroupRole` type.** The document's `GroupRole` enum is `conductor | relay` only, while [role-hierarchy.md](../../domain/role-hierarchy.md) describes a section leader (*référent*) as a real role — one that leads and validates within *one* pupitre. `GroupRole` as modeled hangs off `Membership` alone and has nowhere to put that pupitre reference, which is very likely why the document omits it. Raised on BAT-38 rather than designed unilaterally; resolving it means either a `pupitreId` on `GroupRole` or a separate model, and that is a data-model decision, not an implementation one.
+## The bootstrap placeholder was removed forward, not erased
 
-## Migration history is rewritten, not appended, when a placeholder goes
-
-BAT-38 deleted `20260716145002_init` instead of adding a migration that drops `HelloWorld`. That is safe precisely because no environment yet holds data worth keeping, and it leaves a single clean initial migration — but it has a consequence worth knowing: **any database that already recorded the deleted migration in `_prisma_migrations` will fail `prisma migrate deploy`**, because the applied migration no longer exists locally. A local dev database in that state needs `prisma migrate reset` once (see [infra-and-envs.md](../overview/infra-and-envs.md) for how local databases are provisioned).
-
-This is a one-off licence tied to the bootstrap placeholder. Once real data exists anywhere, migration history is append-only.
+BAT-38 dropped `HelloWorld` with a migration that drops the table, leaving `20260716145002_init` exactly as it was. Rewriting history would have been tempting — no environment holds data worth keeping yet, and it would have left one clean initial migration — but it breaks every database that already recorded the deleted migration, and the discipline is worth more than the tidiness. See [database-migrations.md](database-migrations.md) for the rule and for what "append-only" costs and buys.
 
 ## Verifying a schema change
 
 `check:schema` and `check:migrations` are the two gates, both run in CI against ephemeral Neon branches — see [quality-gates.md](../overview/quality-gates.md) and [infra-and-envs.md](../overview/infra-and-envs.md). Locally, `check:schema` only needs a `SHADOW_DATABASE_URL` pointing at a structurally empty database; it replays the whole migration directory into it and diffs the result against `schema.prisma`.
 
-`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`) that fails if a migration and the client have drifted apart. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
+`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`), followed by four writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, and a duplicate pupitre name. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
+
+Run it through turbo (`yarn turbo run test`), not `yarn workspace @batuto/api test`: `apps/api` imports `@batuto/db`'s built `dist/`, so a direct invocation happily tests a stale client against a freshly migrated database and reports failures that do not exist.

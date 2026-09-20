@@ -91,6 +91,7 @@ model Membership {
   validatedMemberInstruments MemberInstrument[] @relation("MemberInstrumentValidator")
 
   @@unique([userId, bandId])
+  @@unique([id, bandId])
   @@index([bandId])
 }
 
@@ -121,25 +122,38 @@ model Pupitre {
   memberInstruments MemberInstrument[]
 
   @@unique([bandId, name])
+  @@unique([id, bandId])
 }
 
 /// An instrument/section a member plays, at a given autonomy tier. Carries two
 /// distinct relations to Membership: the member who declares it, and the
 /// (necessarily different) member who validates it.
+///
+/// Every foreign key here is composite, so that a row cannot pair a membership
+/// with another band's pupitre or validator — band scoping is enforced by the
+/// database, not only by callers. That costs one denormalised band column per
+/// relation, because Prisma cannot write a relation scalar shared by two
+/// relations (it silently leaves it NULL), and cannot SET NULL a column that a
+/// non-nullable relation also depends on. Two CHECK constraints tie those
+/// columns back to bandId; Prisma has no syntax for them, so they live in
+/// 20260920071200_pupitres_and_member_instruments/migration.sql by hand.
 model MemberInstrument {
-  id            String               @id @default(uuid(7))
-  membershipId  String
-  pupitreId     String
-  tier          MemberInstrumentTier
-  validated     Boolean              @default(false)
-  validatedById String?
-  validatedAt   DateTime?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id              String               @id @default(uuid(7))
+  bandId          String
+  membershipId    String
+  pupitreId       String
+  pupitreBandId   String
+  tier            MemberInstrumentTier
+  validated       Boolean              @default(false)
+  validatedById   String?
+  validatorBandId String?
+  validatedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
-  membership  Membership  @relation("MemberInstrumentMember", fields: [membershipId], references: [id], onDelete: Cascade)
-  pupitre     Pupitre     @relation(fields: [pupitreId], references: [id], onDelete: Cascade)
-  validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById], references: [id], onDelete: SetNull)
+  membership  Membership  @relation("MemberInstrumentMember", fields: [membershipId, bandId], references: [id, bandId], onDelete: Cascade)
+  pupitre     Pupitre     @relation(fields: [pupitreId, pupitreBandId], references: [id, bandId], onDelete: Cascade)
+  validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById, validatorBandId], references: [id, bandId], onDelete: SetNull)
 
   @@unique([membershipId, pupitreId])
   @@index([pupitreId])
