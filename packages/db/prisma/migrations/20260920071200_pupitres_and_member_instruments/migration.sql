@@ -18,11 +18,9 @@ CREATE TABLE "MemberInstrument" (
     "bandId" TEXT NOT NULL,
     "membershipId" TEXT NOT NULL,
     "pupitreId" TEXT NOT NULL,
-    "pupitreBandId" TEXT NOT NULL,
     "tier" "MemberInstrumentTier" NOT NULL,
     "validated" BOOLEAN NOT NULL DEFAULT false,
     "validatedById" TEXT,
-    "validatorBandId" TEXT,
     "validatedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -55,23 +53,15 @@ ALTER TABLE "Pupitre" ADD CONSTRAINT "Pupitre_bandId_fkey" FOREIGN KEY ("bandId"
 ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_membershipId_bandId_fkey" FOREIGN KEY ("membershipId", "bandId") REFERENCES "Membership"("id", "bandId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_pupitreId_pupitreBandId_fkey" FOREIGN KEY ("pupitreId", "pupitreBandId") REFERENCES "Pupitre"("id", "bandId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_pupitreId_bandId_fkey" FOREIGN KEY ("pupitreId", "bandId") REFERENCES "Pupitre"("id", "bandId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_validatedById_validatorBandId_fkey" FOREIGN KEY ("validatedById", "validatorBandId") REFERENCES "Membership"("id", "bandId") ON DELETE SET NULL ON UPDATE CASCADE;
+-- Hand-edited, and it must stay hand-edited: Prisma emits a bare
+-- `ON DELETE SET NULL`, which would try to null "bandId" too and fail against
+-- its NOT NULL. Postgres 15+ takes a column list, so only the validator is
+-- cleared when their membership goes — the instrument and its band survive.
+-- Regenerating this migration would silently drop the column list; the
+-- "keeps a validated instrument, minus its validator" case in
+-- apps/api/src/db.test.ts is what catches that.
+ALTER TABLE "MemberInstrument" ADD CONSTRAINT "MemberInstrument_validatedById_bandId_fkey" FOREIGN KEY ("validatedById", "bandId") REFERENCES "Membership"("id", "bandId") ON DELETE SET NULL ("validatedById") ON UPDATE CASCADE;
 
-
--- AddCheckConstraint
--- Band scoping is carried by one denormalised band column per composite
--- foreign key, because Prisma cannot write a relation scalar shared by two
--- relations (it leaves it NULL) and cannot SET NULL a column that another,
--- non-nullable relation also uses. These two checks are what tie those
--- columns back together; they are hand-written, invisible to `migrate diff`,
--- and must be carried forward by hand if this table is ever rebuilt.
-ALTER TABLE "MemberInstrument"
-    ADD CONSTRAINT "MemberInstrument_pupitreBandId_matches_bandId"
-    CHECK ("pupitreBandId" = "bandId");
-
-ALTER TABLE "MemberInstrument"
-    ADD CONSTRAINT "MemberInstrument_validatorBandId_matches_bandId"
-    CHECK ("validatorBandId" IS NULL OR "validatorBandId" = "bandId");

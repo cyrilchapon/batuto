@@ -129,31 +129,30 @@ model Pupitre {
 /// distinct relations to Membership: the member who declares it, and the
 /// (necessarily different) member who validates it.
 ///
-/// Every foreign key here is composite, so that a row cannot pair a membership
-/// with another band's pupitre or validator — band scoping is enforced by the
-/// database, not only by callers. That costs one denormalised band column per
-/// relation, because Prisma cannot write a relation scalar shared by two
-/// relations (it silently leaves it NULL), and cannot SET NULL a column that a
-/// non-nullable relation also depends on. Two CHECK constraints tie those
-/// columns back to bandId; Prisma has no syntax for them, so they live in
-/// 20260920071200_pupitres_and_member_instruments/migration.sql by hand.
+/// bandId is denormalised here on purpose: all three foreign keys are composite
+/// and route through that one column, so the database itself refuses to pair a
+/// membership with another band's pupitre, or to accept a validator from
+/// another band. Referential integrity is worth the redundant column.
+///
+/// One caveat, handled in the migration: `prisma validate` warns that SetNull
+/// is questionable when a referenced field is required, and it is right that a
+/// bare SET NULL would try to clear bandId too. The migration hand-writes
+/// Postgres's column-list form so only validatedById is cleared.
 model MemberInstrument {
-  id              String               @id @default(uuid(7))
-  bandId          String
-  membershipId    String
-  pupitreId       String
-  pupitreBandId   String
-  tier            MemberInstrumentTier
-  validated       Boolean              @default(false)
-  validatedById   String?
-  validatorBandId String?
-  validatedAt     DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  id            String               @id @default(uuid(7))
+  bandId        String
+  membershipId  String
+  pupitreId     String
+  tier          MemberInstrumentTier
+  validated     Boolean              @default(false)
+  validatedById String?
+  validatedAt   DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   membership  Membership  @relation("MemberInstrumentMember", fields: [membershipId, bandId], references: [id, bandId], onDelete: Cascade)
-  pupitre     Pupitre     @relation(fields: [pupitreId, pupitreBandId], references: [id, bandId], onDelete: Cascade)
-  validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById, validatorBandId], references: [id, bandId], onDelete: SetNull)
+  pupitre     Pupitre     @relation(fields: [pupitreId, bandId], references: [id, bandId], onDelete: Cascade)
+  validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById, bandId], references: [id, bandId], onDelete: SetNull)
 
   @@unique([membershipId, pupitreId])
   @@index([pupitreId])

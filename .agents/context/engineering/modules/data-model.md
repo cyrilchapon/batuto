@@ -41,14 +41,27 @@ An ER diagram carries entities and relations; uniqueness and indexing are implem
 
 ## Band scoping is enforced by the database
 
-Nothing may pair a `Membership` in band A with a `Pupitre` — or a validator — in band B. That is enforced, not merely expected of callers: every foreign key out of `MemberInstrument` is composite, pointing at `(id, bandId)` on `Membership` and `Pupitre` (each of which carries an `@@unique([id, bandId])` for that purpose).
+Nothing may pair a `Membership` in band A with a `Pupitre` — or a validator — in band B. That is enforced, not merely expected of callers. `Membership` and `Pupitre` each carry an `@@unique([id, bandId])`, and all three foreign keys out of `MemberInstrument` are composite, routing through a single denormalised `bandId` column on that table:
 
-Making that work with Prisma costs three band columns on `MemberInstrument` — `bandId`, `pupitreBandId`, `validatorBandId` — one per composite foreign key, because of two hard limits worth knowing before modelling Layer 2 the same way:
+```prisma
+membership  Membership  @relation("MemberInstrumentMember", fields: [membershipId, bandId], references: [id, bandId], onDelete: Cascade)
+pupitre     Pupitre     @relation(fields: [pupitreId, bandId], references: [id, bandId], onDelete: Cascade)
+validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById, bandId], references: [id, bandId], onDelete: SetNull)
+```
 
-- **Prisma cannot write a relation scalar shared by two relations.** Point both the `membership` and `pupitre` relations at one `bandId` and the schema still validates, the client still typechecks, and every insert then fails at runtime with a null-constraint violation on that column — the query engine treats a shared scalar as unwritable, both through nested `connect` and through the unchecked all-scalars form. Each composite foreign key needs its own column.
-- **Prisma cannot `SET NULL` a column a non-nullable relation also uses.** `validatedBy` has to be clearable when a validator's membership is deleted (losing the validator must not delete the validated instrument), which rules out reusing the required `bandId` for it.
+The redundant column is the point, not a concession: correct referential integrity is worth more than avoiding a denormalised key, and routing every relation through the same physical column is what makes "same band" structurally true rather than merely checked. Expect to do the same in Layer 2, where `AvailabilityResponse` and `PupitreAssignment` each reference an event, a membership and a pupitre that must all agree on their band.
 
-What ties those columns back together is two CHECK constraints (`pupitreBandId = bandId`, and `validatorBandId` null-or-equal to `bandId`). Prisma has no syntax for CHECK constraints, so they are hand-written at the end of `20260920071200_pupitres_and_member_instruments/migration.sql`. `prisma migrate diff` neither generates nor notices them, so `check:schema` stays green with or without them — which is exactly why they need carrying forward by hand if that table is ever rebuilt, and why `apps/api/src/db.test.ts` tries to violate all of it.
+An optional composite foreign key behaves correctly without extra machinery: Postgres's default `MATCH SIMPLE` skips the check entirely when any of its columns is NULL, so `validatedById IS NULL` means "no validator", not a violation.
+
+### The one thing Prisma can't emit
+
+`prisma validate` warns that `SetNull` is questionable when a referenced field is required, and it is right: the SQL Prisma generates is a bare `ON DELETE SET NULL`, which would try to clear `bandId` too and fail against its `NOT NULL`. Postgres 15+ accepts a column list, so `20260920071200_pupitres_and_member_instruments/migration.sql` hand-writes:
+
+```sql
+ON DELETE SET NULL ("validatedById")
+```
+
+Only the validator is cleared when their membership is deleted; the instrument and its band survive. `check:schema` stays green — `migrate diff` does not distinguish the column list from a bare `SET NULL` — which cuts both ways: regenerating that migration would silently drop the column list and nothing mechanical would object. The "keeps a validated instrument, minus its validator" case in `apps/api/src/db.test.ts` is what actually catches it.
 
 ## What the schema deliberately does not enforce
 
@@ -62,6 +75,6 @@ BAT-38 dropped `HelloWorld` with a migration that drops the table, leaving `2026
 
 `check:schema` and `check:migrations` are the two gates, both run in CI against ephemeral Neon branches — see [quality-gates.md](../overview/quality-gates.md) and [infra-and-envs.md](../overview/infra-and-envs.md). Locally, `check:schema` only needs a `SHADOW_DATABASE_URL` pointing at a structurally empty database; it replays the whole migration directory into it and diffs the result against `schema.prisma`.
 
-`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`), followed by four writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, and a duplicate pupitre name. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
+`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`), followed by writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, and a duplicate pupitre name. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
 
 Run it through turbo (`yarn turbo run test`), not `yarn workspace @batuto/api test`: `apps/api` imports `@batuto/db`'s built `dist/`, so a direct invocation happily tests a stale client against a freshly migrated database and reports failures that do not exist.

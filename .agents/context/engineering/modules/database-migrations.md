@@ -21,7 +21,7 @@ To undo something a pushed migration did, **write a new migration that undoes it
 
 The only edit a pushed migration ever legitimately receives is none. If a migration is wrong, the fix is forward.
 
-An unpushed migration, still local and unshared, is different — regenerate it freely until it is right. The line is the push, not the commit.
+**Where the line actually falls:** a migration becomes immutable once it has reached somewhere that records having applied it — `dev`, any deployed environment, or a colleague's database. On an unmerged feature branch that nothing has deployed, a migration is still a draft: regenerate or rewrite it freely while the shape is still under review, and rebase the branch rather than stacking a corrective migration onto a design nobody has run. Pushing a branch is not what freezes it; merging it, or anyone applying it, is.
 
 ## One logical change per migration
 
@@ -40,7 +40,9 @@ Edit `schema.prisma`, then let Prisma produce the SQL:
 
 Then **read the generated SQL before committing it**. Generation is not review: Prisma will happily generate a column drop, a table rewrite, or a `NOT NULL` addition with no default that cannot succeed against existing rows.
 
-Hand-written SQL is for the things Prisma has no syntax for — CHECK constraints, triggers, partial indexes, data backfills. Append those to the generated file rather than writing a whole migration by hand, and **comment why**, because `prisma migrate diff` cannot see them: they are invisible to `check:schema`, which means nothing will tell you when they go missing. See `20260920071200_pupitres_and_member_instruments/migration.sql` for the pattern.
+Hand-written SQL is for the things Prisma has no syntax for — CHECK constraints, triggers, partial indexes, data backfills, and the odd SQL feature Prisma's emitter predates. Edit the generated file rather than writing a whole migration by hand, and **comment why, in the migration itself**, because `prisma migrate diff` cannot see the difference: `check:schema` stays green whether the hand-written part is there or not, so nothing mechanical will tell you when a regeneration quietly drops it. Pair every such edit with a test that fails if it disappears.
+
+`20260920071200_pupitres_and_member_instruments/migration.sql` is the worked example: Prisma emits a bare `ON DELETE SET NULL` for a composite foreign key whose band column is required, which would fail at runtime; the migration hand-writes Postgres 15+'s column-list form (`ON DELETE SET NULL ("validatedById")`) so only the nullable column is cleared.
 
 ## Write migrations that can run against real rows
 

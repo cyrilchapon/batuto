@@ -121,7 +121,10 @@ describe("Layer 1 schema", () => {
     const kept = await db.memberInstrument.findUniqueOrThrow({ where: { id: instrument.id } });
     expect(kept.validated).toBe(true);
     expect(kept.validatedById).toBeNull();
-    expect(kept.validatorBandId).toBeNull();
+    // The band column is shared with the two required relations, so clearing
+    // the validator must leave it alone — see the migration's hand-written
+    // column-list SET NULL.
+    expect(kept.bandId).toBe(a.bandId);
   });
 
   it("scopes a pupitre name to its own band", async () => {
