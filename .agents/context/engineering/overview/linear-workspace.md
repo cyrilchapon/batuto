@@ -1,8 +1,8 @@
 ---
 title: Linear workspace reference
-summary: Team/project/milestone UUIDs for Batutô, and the rule that UUIDs — never slugs — must be used when attaching issues to a project or milestone
+summary: Team/project/milestone UUIDs for Batutô, the rule that UUIDs — never slugs — must be used when attaching issues, and the issue-state doctrine every agent follows while working a ticket
 category: engineering
-last_updated: 2026-07-15
+last_updated: 2026-09-20
 related:
   - product/scope.md
 ---
@@ -26,6 +26,17 @@ This is operational reference for any agent (chat or Claude Code) creating or up
 | Milestone: v1 — NICE TO HAVE | UUID `3c32b1d4-2cad-4fd9-bc13-cf4ebe54fedc` (target: 2026-10-31) |
 
 If any of these IDs no longer resolve (e.g. a milestone was renamed or recreated), treat that as a signal to re-fetch and update this table via `knowledge-update`, not to guess a replacement.
+
+## Issue states — move the ticket, don't just do the work
+
+The board is how a human sees what is happening without reading a transcript. An agent that does a ticket's work without touching its state leaves the board lying, so **moving the ticket is part of the task, not paperwork around it**.
+
+- **`In Progress`** — set it **immediately before starting**, not after finishing and not halfway through. If work has begun, the board says so. This applies to any ticket being worked, including one picked up mid-conversation.
+- **`Todo`** — means "to be done very soon". Use it deliberately to stage what comes next: when a ticket is identified as the next thing to pick up, or when a newly created ticket unblocks something already in flight, move it out of `Backlog` so the board shows the short-term queue rather than one undifferentiated pile.
+- **`Backlog`** — everything else. A new ticket lands here unless there is a reason to stage it.
+- **`In Review`** and **`Done`** — not an agent's call to make unilaterally. Say the work is finished and let the human move it, unless they have said otherwise.
+
+Two states are worth a moment's thought rather than reflex: a ticket that turns out to be blocked stays `In Progress` only if it is genuinely still being worked — otherwise say so and move it back, rather than leaving a stalled ticket looking active.
 
 ## Conventions when creating issues
 
