@@ -2,8 +2,9 @@
 title: Data modeling convention
 summary: The data-model-diagram skill is agnostic — feed it Batutô's domain docs and current schema explicitly, and treat the Linear "Data model" document as the output's source of truth, not a local file
 category: product
-last_updated: 2026-07-15
+last_updated: 2026-09-20
 related:
+  - engineering/modules/data-model.md
   - domain/multi-band.md
   - domain/role-hierarchy.md
   - domain/readiness-rules.md
@@ -42,3 +43,7 @@ Carried over from the current schema so they don't get silently redesigned in a 
 Update the Linear document directly (via `Linear:save_document` against the existing document ID, not a new one) rather than saving the generated Mermaid as a local file in the repo — this keeps one source of truth for the schema instead of a diagram drifting in the repo separately from the description in Linear. If a genuinely new layer is being designed (e.g. the Layer 3 decision-rule cascade once its shape is settled), that's a new Linear document, following the same project-attachment rules in `engineering/overview/linear-workspace.md` (UUID, not slug).
 
 After a schema change lands this way, run `knowledge-update` to check whether any `domain/` document's data-model notes (e.g. the "Data model note" in `readiness-rules.md`) need a matching update.
+
+## Then it gets implemented
+
+The Linear document stays the source of truth for *what* is modeled, but since Layer 1 landed ([BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres)) there is also a real Prisma schema translating it. Implementing a layer is deliberately a translation job, not a second design pass — the conventions it follows, the constraints it adds that an ER diagram can't express, and the invariants it knowingly leaves to the API layer are all in [engineering/modules/data-model.md](../engineering/modules/data-model.md). Read that before touching `schema.prisma`; bring any genuine modeling gap found while implementing back here and into the Linear document rather than settling it in the schema.
