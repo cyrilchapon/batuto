@@ -7,17 +7,33 @@ import { db } from "./db.js";
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const bandName = (label: string) => `Test band ${label} ${suffix}`;
 
-// A rejection only means something here if the database produced it. A
-// PrismaClientValidationError would mean the client refused the shape before
-// the query ever ran, which proves nothing about the constraints under test.
-const expectRejectedByDatabase = async (query: Promise<unknown>) => {
+// Prisma error codes: P2002 is a unique violation, P2003 a foreign key one,
+// and P2010 is how a raw query reports whatever Postgres raised.
+// https://www.prisma.io/docs/orm/reference/error-reference
+type ConstraintCode = "P2002" | "P2003" | "P2010";
+
+// A rejection only means something here if the *expected* constraint produced
+// it. Accepting any database error is not enough: a case meant to exercise a
+// foreign key stays green when some other constraint rejects the row first,
+// which is exactly how the cross-band validator case below used to pass
+// without ever reaching the composite FK it exists to test.
+const expectRejectedByDatabase = async (
+  query: Promise<unknown>,
+  code: ConstraintCode,
+  detail: string,
+) => {
   const error = await query.then(
     () => null,
     (caught: unknown) => caught,
   );
 
   expect(error).toBeInstanceOf(Error);
-  expect((error as Error).name).not.toBe("PrismaClientValidationError");
+  expect((error as Error).name).toBe("PrismaClientKnownRequestError");
+  expect((error as { code?: string }).code).toBe(code);
+  // Naming the constraint is the whole point: without it a case meant to
+  // exercise one foreign key passes just as happily when a different one
+  // rejects the row first.
+  expect((error as Error).message).toContain(detail);
 };
 
 type Fixture = {
@@ -158,6 +174,8 @@ describe("Layer 1 schema", () => {
     // Band a already has a "surdo"; a second one in the same band is a duplicate.
     await expectRejectedByDatabase(
       db.pupitre.create({ data: { bandId: a.bandId, name: "surdo" } }),
+      "P2002",
+      '(`"bandId"`, `name`)',
     );
 
     // The same name in another band is fine — pupitres are a per-band catalog.
@@ -175,6 +193,8 @@ describe("Layer 1 schema", () => {
             pupitre: { connect: { id: b.pupitreId } },
           },
         }),
+        "P2003",
+        "MemberInstrument_membershipId_bandId_fkey",
       );
     });
 
@@ -187,20 +207,46 @@ describe("Layer 1 schema", () => {
             pupitre: { connect: { id: a.pupitreId } },
           },
         }),
+        "P2003",
+        "MemberInstrument_membershipId_bandId_fkey",
       );
     });
 
     it("rejects a validator from another band", async () => {
+      const declarer = await createMember("cross-band-validator-a", a.bandId);
+
+      // Through the client this is caught by the *membership* key, not the
+      // validator's: all three relations share bandId, and Prisma resolves it
+      // from the validator's connect — so the row claims band b while its
+      // membership is in band a, and MemberInstrument_membershipId_bandId_fkey
+      // fires first. Correct outcome, different constraint.
       await expectRejectedByDatabase(
         db.memberInstrument.create({
           data: {
             tier: "debutant",
             validated: true,
-            membership: { connect: { id: a.musicianId } },
+            membership: { connect: { id: declarer.id } },
             pupitre: { connect: { id: a.pupitreId } },
             validatedBy: { connect: { id: b.conductorId } },
           },
         }),
+        "P2003",
+        "MemberInstrument_membershipId_bandId_fkey",
+      );
+
+      // Which leaves the validator's own key unexercised, since the client
+      // cannot build a row that reaches it. Raw SQL can, and this is the case
+      // that fails if that key is ever regenerated to a single column.
+      await expectRejectedByDatabase(
+        db.$executeRaw`
+          INSERT INTO "MemberInstrument"
+            ("id", "bandId", "membershipId", "pupitreId", "tier", "validated", "validatedById", "updatedAt")
+          VALUES
+            (${`raw-${suffix}`}, ${a.bandId}, ${declarer.id}, ${a.pupitreId},
+             'debutant'::"MemberInstrumentTier", true, ${b.conductorId}, now())
+        `,
+        "P2010",
+        "MemberInstrument_validatedById_bandId_fkey",
       );
     });
   });

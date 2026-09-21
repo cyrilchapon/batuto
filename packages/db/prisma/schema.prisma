@@ -127,7 +127,10 @@ model Pupitre {
 
 /// An instrument/section a member plays, at a given autonomy tier. Carries two
 /// distinct relations to Membership: the member who declares it, and the
-/// (necessarily different) member who validates it.
+/// member who validates it. The domain expects those to be different people —
+/// validation records that someone with authority signed off — but nothing
+/// here enforces it: validatedById may equal membershipId. Left to the handler
+/// for now, and listed as such in data-model.md.
 ///
 /// bandId is denormalised here on purpose: all three foreign keys are composite
 /// and route through that one column, so the database itself refuses to pair a

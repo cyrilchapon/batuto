@@ -88,6 +88,8 @@ db.memberInstrument.update({
 
 ## What the schema deliberately does not enforce
 
+- **Self-validation.** Nothing stops `MemberInstrument.validatedById` from equalling its own `membershipId` — the composite key constrains the validator to the same *band*, and no CHECK compares the two columns (verified against a live database). A member can therefore sign off their own declaration, which defeats the point of the field: it exists to record that someone with authority validated it (see [role-hierarchy.md](../../domain/role-hierarchy.md)). Whoever writes the [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) handler has to check it there. Moving it into the database is one hand-written `CHECK`, and worth doing once one domain question is settled: in a band whose only conductor also plays, a blanket ban leaves that member's own instrument permanently unvalidatable.
+
 - **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. Not modeled yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). Tracked as [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent) in v0 CORE, blocking BAT-45.
 
 ## The bootstrap placeholder was removed forward, not erased
