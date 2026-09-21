@@ -31,13 +31,22 @@ If any of these IDs no longer resolve (e.g. a milestone was renamed or recreated
 
 The board is how a human sees what is happening without reading a transcript. An agent that does a ticket's work without touching its state leaves the board lying, so **moving the ticket is part of the task, not paperwork around it**.
 
+The split is clean: **an agent owns the states before a pull request exists, and the GitHub automation owns the ones after.**
+
+### Yours to set
+
 - **`In Progress`** — set it **immediately before starting**, not after finishing and not halfway through. If work has begun, the board says so. This applies to any ticket being worked, including one picked up mid-conversation.
 - **`Todo`** — means "to be done very soon". Use it deliberately to stage what comes next: when a ticket is identified as the next thing to pick up, or when a newly created ticket unblocks something already in flight, move it out of `Backlog` so the board shows the short-term queue rather than one undifferentiated pile.
 - **`Backlog`** — everything else. A new ticket lands here unless there is a reason to stage it.
-- **`In Review`** — **the GitHub automation already does this**, on pull-request open, within seconds. Don't set it by hand, and don't report the state from memory of your own last write: BAT-38 sat in `In Review` for a full working session while being described as `In Progress`, because nobody re-read it. Re-read the issue before saying where it is.
-- **`Done`** — not an agent's call to make unilaterally. Say the work is finished and let the human move it, unless they have said otherwise.
 
-Two states are worth a moment's thought rather than reflex: a ticket that turns out to be blocked stays `In Progress` only if it is genuinely still being worked — otherwise say so and move it back, rather than leaving a stalled ticket looking active.
+A ticket that turns out to be blocked stays `In Progress` only if it is genuinely still being worked — otherwise say so and move it back, rather than leaving a stalled ticket looking active.
+
+### The automation's, not yours
+
+- **`In Review`** — set on pull-request open, within seconds of it.
+- **`Done`** — set on merge into `dev`, which is also the staging deploy. So `Done` here means **deployed to staging**, not merely merged, and not "shipped to users" — there is no production branch yet (see [infra-and-envs.md](infra-and-envs.md)).
+
+Never set these by hand, and **never report either from memory of your own last write** — re-read the issue. BAT-38 sat in `In Review` for a whole working session while being described as `In Progress`, because its own last known state was the one the agent had written rather than the one the automation had since applied.
 
 ## Conventions when creating issues
 
