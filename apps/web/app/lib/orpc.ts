@@ -6,8 +6,10 @@ import { createORPCReactQueryUtils } from "@orpc/react-query";
 import { appEnv } from "../env.js";
 
 // Lets a caller attach a fresh Clerk session token per request (see
-// dashboard.tsx's privateHello/boom calls) without threading it through
-// the link's construction, which happens once at module load.
+// dashboard.tsx) without threading it through the link's construction, which
+// happens once at module load. Note that this is a plain value, not a thunk —
+// see .agents/context/engineering/modules/api-procedures.md for the trap that
+// creates with React Query.
 export type OrpcClientContext = { token?: string };
 
 const link = new OpenAPILink<OrpcClientContext>(contract, {

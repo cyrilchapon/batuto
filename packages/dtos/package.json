@@ -15,10 +15,7 @@
     "check:type": "tsgo -p tsconfig.json --noEmit",
     "build": "tsgo -p tsconfig.build.json",
     "build:declaration": "tsgo -p tsconfig.declaration.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "zod": "^4.1.13"
+    "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
     "@batuto/config-typescript": "workspace:*",

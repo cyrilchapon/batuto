@@ -2,7 +2,7 @@
 title: "Quality gates — check:/fix: scripts"
 summary: check:type (tsgo), check:lint/format/assist (Biome), check:unused (Knip), check:depsync (Syncpack) — how to check after working, how to fix what's found, and why every invocation goes through turbo directly
 category: engineering
-last_updated: 2026-07-21
+last_updated: 2026-09-20
 related:
   - engineering/overview/monorepo-layout.md
   - engineering/overview/stack.md
@@ -38,6 +38,15 @@ This exists specifically so automation (CI first, but also any future scripting)
 | `check:depsync` | Syncpack | Global | `yarn turbo run //#check:depsync` |
 
 Run the ones relevant to what changed. `yarn turbo run check:type //#check:lint //#check:format //#check:assist //#check:unused //#check:depsync` runs all six in a single turbo invocation (still not a package.json alias — it's one direct turbo call with six task arguments) when you want the full sweep locally before pushing.
+
+## Running these from a sandboxed agent session
+
+A Claude Code session runs in a container with outbound traffic through an HTTP(S) proxy, which changes what can actually be verified there. Established the hard way; check this list before concluding that something is broken or that a failure is "pre-existing".
+
+- **Secrets are available — pull them.** The Doppler CLI is installed and a token is in the environment, so `yarn workspace @batuto/api env:pull` (and the equivalent for `@batuto/web`, `@batuto/db`) fetches the real values. A checked-out `.env` may otherwise hold the committed example placeholders (`sk_test_...` literally), which fail as `Publishable key not valid` and surface as a 500 on every oRPC route — easy to misread as a network or auth bug.
+- **Unset the proxy for `apps/api`'s tests.** `supertest` sends its request to `127.0.0.1` but still picks up `HTTPS_PROXY` and dies constructing an agent (`Cannot read properties of undefined (reading 'href')`). Run `env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy yarn workspace @batuto/api test`. Nothing in the test needs the proxy, since Clerk rejects a tokenless request without calling out.
+- **The database has to be local.** The proxy carries HTTP(S) only — a raw Postgres connection on `:5432` times out, so Neon is unreachable from the container whatever credentials are present. Use the `docker-compose.yml` Postgres (or a local cluster) for `migrate deploy`, `check:schema` and anything touching `db`.
+- **`check:migrations` therefore cannot run locally at all.** It deploys against an ephemeral clone of the shared dev Neon branch. The Neon API itself is reachable over HTTPS and a branch can be created and deleted, but nothing can connect to it. This one is genuinely CI-only — and CI only triggers on a pull request to `dev` or a push to `dev`, so a branch with no PR has never had it run.
 
 ## How to fix
 
