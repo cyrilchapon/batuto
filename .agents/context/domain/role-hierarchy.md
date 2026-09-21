@@ -2,11 +2,12 @@
 title: Musical role hierarchy
 summary: Conductor/section-leader/relay/musician is band-membership-scoped, optional, and variable in cardinality — never a fixed shape
 category: domain
-last_updated: 2026-07-15
+last_updated: 2026-09-21
 related:
   - domain/event-ownership.md
   - domain/readiness-rules.md
   - domain/multi-band.md
+  - engineering/modules/data-model.md
 ---
 
 # Musical role hierarchy
@@ -38,6 +39,8 @@ Any data model or permission check that assumes "a band has exactly one conducto
 Independent of group role, each member has an **autonomy tier per instrument/section** they play (Débutant / Musicien non-autonome / Musicien autonome / Référent) — a static attribute, validated by a section leader or conductor. This is distinct from group role: a "Référent" tier on an instrument is not the same thing as the *référent* group role, though the terms overlap in everyday band language. Tiers feed a **pairing rule** (a beginner must be paired with at least one autonomous musician; a non-autonomous musician must be paired with at least one other non-autonomous musician) that is always computed dynamically per event, never stored as a static fact about the member.
 
 This tier system is v1 scope (Nice-to-have), layered onto the same section-leader selection step that exists in v0 — it weights who counts toward section readiness, it doesn't introduce a new selection mechanism.
+
+**Data model note.** Both halves of this document are now modeled: group roles as `GroupRole` (`conductor | relay`), the section-leader role as `PupitreLeader` (a `Membership` × `Pupitre` model, not an enum value), and the tier as `MemberInstrument.tier`. Who may validate a tier is derived from those roles and enforced in the handler rather than the schema — including one reading of "a section leader or conductor" above that the implementation deliberately widened. See [data-model.md](../engineering/modules/data-model.md#a-pupitre-scoped-role-is-a-model-not-another-enum-value).
 
 ## What this is not
 

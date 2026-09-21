@@ -2,7 +2,7 @@
 title: Data model implementation (packages/db)
 summary: How the Linear data-model document is translated into Prisma — naming, uuid(7) ids, where constraints live, and what the schema deliberately does not enforce
 category: engineering
-last_updated: 2026-09-20
+last_updated: 2026-09-21
 related:
   - engineering/overview/conventions.md
   - product/data-modeling-convention.md
@@ -18,7 +18,7 @@ related:
 
 The canonical description of *what* is modeled lives in the Linear project document ["Data model — v0 CORE (Layer 1 + Layer 2)"](https://linear.app/cyc-personal/document/data-model-v0-core-layer-1-layer-2-9f90bb8097c7), and the process for evolving it is [data-modeling-convention.md](../../product/data-modeling-convention.md). This document covers only the other half: how that model is expressed in `packages/db/prisma/schema.prisma`, and which invariants the database does and does not enforce.
 
-Layer 1 (`User`, `Band`, `Membership`, `GroupRole`, `Pupitre`, `MemberInstrument`, `InviteCode`) landed with [BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres) as the repo's first real schema, across three migrations on top of the `HelloWorld` bootstrap placeholder. How migrations themselves are written and validated is [database-migrations.md](database-migrations.md).
+Layer 1 (`User`, `Band`, `Membership`, `GroupRole`, `Pupitre`, `MemberInstrument`, `InviteCode`) landed with [BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres) as the repo's first real schema, across three migrations on top of the `HelloWorld` bootstrap placeholder. A fourth added `PupitreLeader` with [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent) — a gap found while implementing BAT-38, not a design change. How migrations themselves are written and validated is [database-migrations.md](database-migrations.md).
 
 ## Schema conventions
 
@@ -37,8 +37,8 @@ An ER diagram carries entities and relations; uniqueness and indexing are implem
 
 - `User.clerkUserId` and `User.email` unique. Clerk owns identity and enforces both upstream (see [auth.md](auth.md)); the database constraint is there to catch a sync bug rather than to define the rule.
 - One `Membership` per `(userId, bandId)`, one `Pupitre` per `(bandId, name)`, one `MemberInstrument` per `(membershipId, pupitreId)`.
-- One `GroupRole` per `(membershipId, type)` — this bounds *duplication*, not cardinality. A band may still have zero, one, or several conductors, which [role-hierarchy.md](../../domain/role-hierarchy.md) requires.
-- Indexes on the band-scoped foreign keys that get queried directly (`Membership.bandId`, `InviteCode.bandId`, `MemberInstrument.pupitreId` / `validatedById`).
+- One `GroupRole` per `(membershipId, type)`, and one `PupitreLeader` per `(membershipId, pupitreId)` — both bound *duplication*, not cardinality. A band may still have zero, one, or several conductors, and a pupitre zero, one, or several leaders, which [role-hierarchy.md](../../domain/role-hierarchy.md) requires.
+- Indexes on the band-scoped foreign keys that get queried directly (`Membership.bandId`, `InviteCode.bandId`, `MemberInstrument.pupitreId` / `validatedById`, `PupitreLeader.pupitreId`). The other direction — "which pupitres does this member lead", the query [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) is built on — rides the `(membershipId, pupitreId)` unique index's leading column and needs no index of its own.
 
 ## Band scoping is enforced by the database
 
@@ -49,6 +49,8 @@ membership  Membership  @relation("MemberInstrumentMember", fields: [membershipI
 pupitre     Pupitre     @relation(fields: [pupitreId, bandId], references: [id, bandId], onDelete: Cascade)
 validatedBy Membership? @relation("MemberInstrumentValidator", fields: [validatedById, bandId], references: [id, bandId], onDelete: SetNull)
 ```
+
+`PupitreLeader` is the second instance and the cheap one: both of its relations are required, so the two composite keys cascade and none of the `SetNull` trouble below applies.
 
 The redundant column is the point, not a concession, and the reasoning generalises well beyond bands — it is written up as a standing principle in [conventions.md](../overview/conventions.md#scoping-keys-travel-through-relations--integrity-over-normalization). Expect to do the same in Layer 2, where `AvailabilityResponse` and `PupitreAssignment` each reference an event, a membership and a pupitre that must all agree on their band.
 
@@ -86,15 +88,33 @@ db.memberInstrument.update({
 
 `bandId` is left alone and the write succeeds. Worth knowing before [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) implements validation withdrawal; `db.test.ts` locks the supported path in.
 
+## A pupitre-scoped role is a model, not another enum value
+
+`GroupRole` is `conductor | relay` and stays that way. Those are *group* roles, held across a whole band, hanging off a `Membership` alone — which is exactly why the *chef de pupitre* (*référent*) could not join them: that role leads one section, and the enum has nowhere to record which. `PupitreLeader` is therefore its own `Membership` × `Pupitre` model, not a third enum value ([BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent)).
+
+It carries no `type` column, and shouldn't grow one speculatively: there is exactly one pupitre-scoped role today. A second one is what would turn this into `GroupRole`'s shape, with a `Pupitre` attached.
+
+Cardinality is free in both directions — a pupitre may have no leader, one, or several; a member may lead several pupitres — per [role-hierarchy.md](../../domain/role-hierarchy.md), which rules out any model assuming a fixed shape. The `(membershipId, pupitreId)` unique key bounds duplication only, and `db.test.ts` asserts both directions rather than leaving that to the reader.
+
+**Mind the vocabulary clash**, which `role-hierarchy.md` flags explicitly: `MemberInstrumentTier.referent` is an autonomy level on one instrument and carries no authority whatsoever. It is not this role, and neither implies the other.
+
+### Who may validate a `MemberInstrument`, settled
+
+With this model in place, validation authority stops being "any `Membership` in the band" and becomes derivable: **a validator must hold a `GroupRole` in the band — `conductor` or `relay` — or lead that instrument's pupitre.**
+
+`relay` counts deliberately, and this widens the domain doc's shorthand — [role-hierarchy.md](../../domain/role-hierarchy.md) says tiers are "validated by a section leader or conductor". Taken literally that leaves a band running on relay authority with no conductor, which the same document describes as real, unable to validate anything: the assumption it rules out, arrived at from the other direction. Widening was the safer reading of the two, but it is a call made here rather than a domain fact, and narrowing it back is a one-line change in the handler.
+
+No key or CHECK can carry this: it spans rows (it asks what roles another membership holds) and is conditional on `validated`. So it is the handler's, and [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) is where it lands — with a test standing in for the constraint that cannot exist, as [conventions.md](../overview/conventions.md#scoping-keys-travel-through-relations--integrity-over-normalization) requires whenever an invariant falls back to application code.
+
 ## What the schema deliberately does not enforce
 
-- **Self-validation.** Nothing stops `MemberInstrument.validatedById` from equalling its own `membershipId` — the composite key constrains the validator to the same *band*, and no CHECK compares the two columns (verified against a live database). A member can therefore sign off their own declaration, which defeats the point of the field: it exists to record that someone with authority validated it (see [role-hierarchy.md](../../domain/role-hierarchy.md)).
+- **Validation authority.** Nothing stops `MemberInstrument.validatedById` from being any membership in the band, its own `membershipId` included — the composite key constrains the validator to the same *band* and nothing more, and no CHECK compares the two columns (verified against a live database). The rule that fills that gap is the authority check above, and it is the handler's on purpose.
 
-  **This is the handler's job, deliberately, and not the database's yet.** A blanket `CHECK ("validatedById" IS NULL OR "validatedById" <> "membershipId")` was weighed and rejected on BAT-38: in a band whose only conductor also plays, it leaves that member's own instrument permanently unvalidatable, which is the same class of assumption [role-hierarchy.md](../../domain/role-hierarchy.md) rules out when it says no model may assume every band has a conductor. The asymmetry also runs the other way from how it first looks — relaxing a constraint later is a migration against a table with rows, while adding one later is a migration against contents you already know. Revisit it with [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent): once *who may validate* is modeled, "not yourself" stops being a standalone rule and becomes a special case of an authority check the handler already performs.
+  **"Not yourself" is not a rule of its own**, which is the part worth not re-deriving. A blanket `CHECK ("validatedById" IS NULL OR "validatedById" <> "membershipId")` was weighed and rejected on BAT-38: in a band whose only conductor also plays, it leaves that member's own instrument permanently unvalidatable — the same assumption [role-hierarchy.md](../../domain/role-hierarchy.md) rules out when it says no model may assume every band has a conductor. BAT-47 resolved it the way that document predicted: the authority check subsumes it. A member with no authority cannot validate anyone's declaration, their own included; a sole conductor who plays can validate their own, because they genuinely *are* the authority the field records. Both fall out of one rule, and neither needs a second.
 
-  **The check [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) needs is conditional, not a bare column comparison:** reject only when `validated` is true *and* `validatedById === membershipId`. A member editing their own declaration while it is still unvalidated is not self-validating, and a rule written against `validatedById` alone blocks a legitimate action.
+  The asymmetry also runs the other way from how it first looks: relaxing a constraint later is a migration against a table with rows, while adding one later is a migration against contents you already know.
 
-- **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. Not modeled yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). Tracked as [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent) in v0 CORE, blocking BAT-45.
+  **The check [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) needs is conditional**, not a bare column comparison: it applies only where `validated` is true. A member editing their own declaration while it is still unvalidated is not validating anything, and a rule written against `validatedById` alone blocks a legitimate action.
 
 ## The bootstrap placeholder was removed forward, not erased
 
@@ -104,6 +124,8 @@ BAT-38 dropped `HelloWorld` with a migration that drops the table, leaving `2026
 
 `check:schema` and `check:migrations` are the two gates, both run in CI against ephemeral Neon branches — see [quality-gates.md](../overview/quality-gates.md) and [infra-and-envs.md](../overview/infra-and-envs.md). Locally, `check:schema` only needs a `SHADOW_DATABASE_URL` pointing at a structurally empty database; it replays the whole migration directory into it and diffs the result against `schema.prisma`.
 
-`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`), followed by writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, and a duplicate pupitre name. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
+`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`, and a member leading a pupitre), followed by writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, a foreign section leader in both directions, and duplicates of a pupitre name and of a leadership. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
+
+Two of its assertions look like over-specification and are not. A negative case names the constraint that rejected the row, because a case meant to exercise one foreign key passes just as happily when another fires first — and where both relations of a row feed the same `bandId`, which key that is depends on which relation the client resolved it from. Reaching a specific one takes an unchecked create pinning `bandId` directly. The other is the free-cardinality pair on `PupitreLeader`: several leaders on one pupitre, several pupitres for one leader. Nothing in the schema forbids either, so nothing but a test notices if a later "tidy-up" unique key does.
 
 Run it through turbo (`yarn turbo run test`), not `yarn workspace @batuto/api test`: `apps/api` imports `@batuto/db`'s built `dist/`, so a direct invocation happily tests a stale client against a freshly migrated database and reports failures that do not exist.
