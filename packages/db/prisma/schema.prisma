@@ -87,6 +87,7 @@ model Membership {
   band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
 
   groupRoles                 GroupRole[]
+  pupitresLed                PupitreLeader[]
   memberInstruments          MemberInstrument[] @relation("MemberInstrumentMember")
   validatedMemberInstruments MemberInstrument[] @relation("MemberInstrumentValidator")
 
@@ -119,18 +120,55 @@ model Pupitre {
 
   band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
 
+  leaders           PupitreLeader[]
   memberInstruments MemberInstrument[]
 
   @@unique([bandId, name])
   @@unique([id, bandId])
 }
 
+/// Leadership of one section — the chef de pupitre (référent). A model of its
+/// own rather than a GroupRoleType value, because this is a *pupitre-scoped*
+/// role: `conductor` and `relay` are held across the whole band and hang off a
+/// Membership alone, which leaves nowhere to record *which* section is led.
+///
+/// Cardinality is free in both directions, exactly as for group roles: a
+/// pupitre may have no leader, one, or several, and one member may lead
+/// several pupitres. The unique key below bounds duplication, not cardinality.
+///
+/// Not to be confused with MemberInstrumentTier.referent despite the shared
+/// word: that is an autonomy level on an instrument and carries no authority.
+/// .agents/context/domain/role-hierarchy.md calls out the vocabulary clash.
+///
+/// bandId is denormalised for the same reason it is on MemberInstrument: both
+/// foreign keys route through that one column, so the database itself refuses
+/// to put a member of one band in charge of another band's section. Both
+/// relations are required here, so this one needs no hand-written SQL.
+model PupitreLeader {
+  id           String   @id @default(uuid(7))
+  bandId       String
+  membershipId String
+  pupitreId    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  membership Membership @relation(fields: [membershipId, bandId], references: [id, bandId], onDelete: Cascade)
+  pupitre    Pupitre    @relation(fields: [pupitreId, bandId], references: [id, bandId], onDelete: Cascade)
+
+  @@unique([membershipId, pupitreId])
+  @@index([pupitreId])
+}
+
 /// An instrument/section a member plays, at a given autonomy tier. Carries two
 /// distinct relations to Membership: the member who declares it, and the
-/// member who validates it. The domain expects those to be different people —
-/// validation records that someone with authority signed off — but nothing
-/// here enforces it: validatedById may equal membershipId. Left to the handler
-/// for now, and listed as such in data-model.md.
+/// member who validates it.
+///
+/// Who may validate is no longer "any membership in the band": since
+/// PupitreLeader exists, a validator must hold a GroupRole in the band
+/// (conductor or relay) or lead this instrument's pupitre. That rule spans
+/// rows and is conditional on `validated`, so no key or CHECK can carry it —
+/// it stays the handler's, and BAT-42 is where it lands. Self-validation falls
+/// out of it rather than being a rule of its own: see data-model.md.
 ///
 /// bandId is denormalised here on purpose: all three foreign keys are composite
 /// and route through that one column, so the database itself refuses to pair a

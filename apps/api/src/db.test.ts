@@ -182,6 +182,95 @@ describe("Layer 1 schema", () => {
     expect(elsewhere.bandId).toBe(b.bandId);
   });
 
+  describe("pupitre leadership", () => {
+    it("lets a pupitre have several leaders, and a member lead several pupitres", async () => {
+      // Free cardinality in both directions is the domain requirement here —
+      // role-hierarchy.md rules out any model that assumes a fixed shape, and
+      // the unique key on (membershipId, pupitreId) must bound duplication
+      // only. A dedicated pair of pupitres keeps the counts below independent
+      // of what the other cases create.
+      const caixa = await db.pupitre.create({ data: { bandId: a.bandId, name: "caixa-leaders" } });
+      const repique = await db.pupitre.create({
+        data: { bandId: a.bandId, name: "repique-leaders" },
+      });
+      const one = await createMember("leader-one-a", a.bandId);
+      const two = await createMember("leader-two-a", a.bandId);
+
+      const led = await db.pupitreLeader.create({
+        data: {
+          membership: { connect: { id: one.id } },
+          pupitre: { connect: { id: caixa.id } },
+        },
+        include: { pupitre: true },
+      });
+      expect(led.bandId).toBe(a.bandId);
+      expect(led.pupitre.name).toBe("caixa-leaders");
+
+      await db.pupitreLeader.create({
+        data: { membership: { connect: { id: two.id } }, pupitre: { connect: { id: caixa.id } } },
+      });
+      await db.pupitreLeader.create({
+        data: { membership: { connect: { id: one.id } }, pupitre: { connect: { id: repique.id } } },
+      });
+
+      expect(await db.pupitreLeader.count({ where: { pupitreId: caixa.id } })).toBe(2);
+      expect(await db.pupitreLeader.count({ where: { membershipId: one.id } })).toBe(2);
+    });
+
+    it("refuses to record the same member leading the same pupitre twice", async () => {
+      const pupitre = await db.pupitre.create({ data: { bandId: a.bandId, name: "surdo-twice" } });
+      const member = await createMember("leader-twice-a", a.bandId);
+      const data = {
+        membership: { connect: { id: member.id } },
+        pupitre: { connect: { id: pupitre.id } },
+      };
+
+      await db.pupitreLeader.create({ data });
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({ data }),
+        "P2002",
+        '(`"membershipId"`, `"pupitreId"`)',
+      );
+    });
+
+    it("drops the leadership, not the pupitre, when the leader leaves the band", async () => {
+      const pupitre = await db.pupitre.create({ data: { bandId: a.bandId, name: "surdo-leaver" } });
+      const leaver = await createMember("leader-leaver-a", a.bandId);
+      const led = await db.pupitreLeader.create({
+        data: {
+          membership: { connect: { id: leaver.id } },
+          pupitre: { connect: { id: pupitre.id } },
+        },
+      });
+
+      await db.membership.delete({ where: { id: leaver.id } });
+
+      expect(await db.pupitreLeader.findUnique({ where: { id: led.id } })).toBeNull();
+      expect(await db.pupitre.findUnique({ where: { id: pupitre.id } })).not.toBeNull();
+    });
+
+    it("rejects a member leading another band's pupitre", async () => {
+      // Unchecked creates, so each case reaches the key it is named after:
+      // with nested connects both relations feed the one shared bandId, and
+      // whichever the client resolves it from decides which key fires.
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({
+          data: { bandId: a.bandId, membershipId: a.musicianId, pupitreId: b.pupitreId },
+        }),
+        "P2003",
+        "PupitreLeader_pupitreId_bandId_fkey",
+      );
+
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({
+          data: { bandId: a.bandId, membershipId: b.musicianId, pupitreId: a.pupitreId },
+        }),
+        "P2003",
+        "PupitreLeader_membershipId_bandId_fkey",
+      );
+    });
+  });
+
   describe("band scoping is enforced by the database, not just by callers", () => {
     it("rejects an instrument pairing a membership with another band's pupitre", async () => {
       await expectRejectedByDatabase(
