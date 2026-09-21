@@ -7,10 +7,9 @@ import { db } from "./db.js";
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const bandName = (label: string) => `Test band ${label} ${suffix}`;
 
-// Prisma error codes: P2002 is a unique violation, P2003 a foreign key one,
-// and P2010 is how a raw query reports whatever Postgres raised.
+// Prisma error codes: P2002 is a unique violation, P2003 a foreign key one.
 // https://www.prisma.io/docs/orm/reference/error-reference
-type ConstraintCode = "P2002" | "P2003" | "P2010";
+type ConstraintCode = "P2002" | "P2003";
 
 // A rejection only means something here if the *expected* constraint produced
 // it. Accepting any database error is not enough: a case meant to exercise a
@@ -215,11 +214,12 @@ describe("Layer 1 schema", () => {
     it("rejects a validator from another band", async () => {
       const declarer = await createMember("cross-band-validator-a", a.bandId);
 
-      // Through the client this is caught by the *membership* key, not the
-      // validator's: all three relations share bandId, and Prisma resolves it
-      // from the validator's connect — so the row claims band b while its
-      // membership is in band a, and MemberInstrument_membershipId_bandId_fkey
-      // fires first. Correct outcome, different constraint.
+      // Built with nested connects, this is caught by the *membership* key
+      // rather than the validator's: all three relations share bandId, and
+      // Prisma resolves it from the validator's connect — so the row claims
+      // band b while its membership is in band a, and
+      // MemberInstrument_membershipId_bandId_fkey fires first. Correct
+      // outcome, different constraint.
       await expectRejectedByDatabase(
         db.memberInstrument.create({
           data: {
@@ -234,18 +234,22 @@ describe("Layer 1 schema", () => {
         "MemberInstrument_membershipId_bandId_fkey",
       );
 
-      // Which leaves the validator's own key unexercised, since the client
-      // cannot build a row that reaches it. Raw SQL can, and this is the case
-      // that fails if that key is ever regenerated to a single column.
+      // Reaching the validator's own key takes an unchecked create, which pins
+      // bandId directly instead of letting the validator's connect decide it.
+      // This is the case that fails if that key is ever regenerated to a
+      // single column.
       await expectRejectedByDatabase(
-        db.$executeRaw`
-          INSERT INTO "MemberInstrument"
-            ("id", "bandId", "membershipId", "pupitreId", "tier", "validated", "validatedById", "updatedAt")
-          VALUES
-            (${`raw-${suffix}`}, ${a.bandId}, ${declarer.id}, ${a.pupitreId},
-             'debutant'::"MemberInstrumentTier", true, ${b.conductorId}, now())
-        `,
-        "P2010",
+        db.memberInstrument.create({
+          data: {
+            tier: "debutant",
+            validated: true,
+            bandId: a.bandId,
+            membershipId: declarer.id,
+            pupitreId: a.pupitreId,
+            validatedById: b.conductorId,
+          },
+        }),
+        "P2003",
         "MemberInstrument_validatedById_bandId_fkey",
       );
     });

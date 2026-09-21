@@ -1,6 +1,6 @@
 ---
 title: Database migration doctrine
-summary: Migrations are append-only and small — one logical change per migration, generated from the schema, validated against a real database before pushing, and any hand-written SQL kept alive by a register plus a test
+summary: Migrations are append-only and small — one logical change per migration, additive before a deploy and destructive after it, generated from the schema, and any hand-written SQL kept alive by a register plus a test
 category: engineering
 last_updated: 2026-09-20
 related:
@@ -70,6 +70,25 @@ Concretely, `validatedBy: { disconnect: true }` still fails against this schema 
 ```
 
 The client-side equivalent has to be written as a scalar update — see [data-model.md](data-model.md#gotcha-clear-a-validator-through-the-scalar-never-disconnect).
+
+## Additive migrations before a deploy, destructive ones after
+
+`_reusable-deploy.yml` runs `release` (the migrations) and only then `deploy-api`/`deploy-web`, both `needs: release`. So for a window of roughly a minute, **the schema is new while the code serving traffic is still old**. Which direction is safe depends entirely on what the migration does:
+
+- **Additive** — a new table, a new nullable column — is safe in that order, and is why the fixed ordering works at all. The old code simply ignores what it doesn't know about.
+- **Destructive** — a `DROP TABLE`, a dropped or renamed column, a new `NOT NULL` without a default — breaks the old code for the length of that window, because it is still reading or writing what the migration just took away.
+
+The rule: **a destructive migration has to reach production only after the code that stopped needing the thing is live.** In practice that means two releases — ship the code change, let it deploy, then drop in a follow-up — because the pipeline has no post-deploy migration step to put it in.
+
+Note that this cuts both ways, and the additive case is safe by luck rather than by design: a migration adding a `NOT NULL` column with no default fails against the old code writing rows without it, in the same window and for the same reason. The ordering is fixed; only the kinds of change that happen to fit it are safe.
+
+### The one conscious exception so far
+
+BAT-38 shipped `20260920071000_drop_hello_world_placeholder` — a `DROP TABLE` — in the same PR as the code that stopped using it. Merging it makes `dev`'s home page 500 for about 69 seconds, since the live release's `/hello` handler writes to that table and the home-page loader calls it on every render.
+
+Taken knowingly: the window is on staging, there is no production branch yet (`main` does not exist), and the review-app path is unaffected because it deploys against a PR clone. The alternative — keeping `model HelloWorld` in `schema.prisma` so the migration history stays drift-free, then a second PR to remove both — was judged more moving parts than the risk warranted at this stage, and it would have merged a PR contradicting its own ticket's definition of done.
+
+**That trade expires with `main`.** Once a production branch exists, "accept the window" is no longer available and this doctrine is the only answer, until the pipeline grows a post-deploy migration step — tracked as [BAT-48](https://linear.app/cyc-personal/issue/BAT-48/deploy-pipeline-etape-de-migration-post-deploiement).
 
 ## Write migrations that can run against real rows
 
