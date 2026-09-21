@@ -182,6 +182,112 @@ describe("Layer 1 schema", () => {
     expect(elsewhere.bandId).toBe(b.bandId);
   });
 
+  // BAT-47. The query BAT-45 is built on is "the sections the current member
+  // leads", so that is what these exercise, rather than the row's existence.
+  describe("pupitre leadership", () => {
+    it("resolves the pupitres a member leads, and the members leading one", async () => {
+      const leader = await createMember("leader-a", a.bandId);
+      const second = await db.pupitre.create({
+        data: { bandId: a.bandId, name: `caixa-${suffix}` },
+      });
+
+      await db.pupitreLeader.create({
+        data: {
+          membership: { connect: { id: leader.id } },
+          pupitre: { connect: { id: a.pupitreId } },
+        },
+      });
+      await db.pupitreLeader.create({
+        data: {
+          membership: { connect: { id: leader.id } },
+          pupitre: { connect: { id: second.id } },
+        },
+      });
+
+      const led = await db.pupitreLeader.findMany({
+        where: { membershipId: leader.id },
+        include: { pupitre: true },
+      });
+      expect(led.map((role) => role.pupitre.name).sort()).toEqual(
+        [`caixa-${suffix}`, "surdo"].sort(),
+      );
+      expect(led.every((role) => role.bandId === a.bandId)).toBe(true);
+
+      const leadingSurdo = await db.pupitreLeader.findMany({ where: { pupitreId: a.pupitreId } });
+      expect(leadingSurdo.map((role) => role.membershipId)).toEqual([leader.id]);
+    });
+
+    it("lets a pupitre have several leaders, and none at all", async () => {
+      const lonely = await db.pupitre.create({
+        data: { bandId: a.bandId, name: `repique-${suffix}` },
+      });
+      expect(await db.pupitreLeader.count({ where: { pupitreId: lonely.id } })).toBe(0);
+
+      const first = await createMember("colead-1-a", a.bandId);
+      const other = await createMember("colead-2-a", a.bandId);
+      for (const membership of [first, other]) {
+        await db.pupitreLeader.create({
+          data: {
+            membership: { connect: { id: membership.id } },
+            pupitre: { connect: { id: lonely.id } },
+          },
+        });
+      }
+
+      expect(await db.pupitreLeader.count({ where: { pupitreId: lonely.id } })).toBe(2);
+    });
+
+    it("refuses the same member leading the same pupitre twice", async () => {
+      const twice = await createMember("twice-a", a.bandId);
+      const pupitre = await db.pupitre.create({
+        data: { bandId: a.bandId, name: `tamborim-${suffix}` },
+      });
+      const data = {
+        membership: { connect: { id: twice.id } },
+        pupitre: { connect: { id: pupitre.id } },
+      };
+
+      await db.pupitreLeader.create({ data });
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({ data }),
+        "P2002",
+        '(`"membershipId"`, `"pupitreId"`)',
+      );
+    });
+
+    it("refuses a leader from another band", async () => {
+      // Nested connects reach the membership key; only an unchecked create
+      // pins bandId independently and reaches the pupitre one. Both are
+      // covered, since either key going single-column is a regression.
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({
+          data: {
+            membership: { connect: { id: b.musicianId } },
+            pupitre: { connect: { id: a.pupitreId } },
+          },
+        }),
+        "P2003",
+        "PupitreLeader_membershipId_bandId_fkey",
+      );
+
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({
+          data: { bandId: a.bandId, membershipId: b.musicianId, pupitreId: a.pupitreId },
+        }),
+        "P2003",
+        "PupitreLeader_membershipId_bandId_fkey",
+      );
+
+      await expectRejectedByDatabase(
+        db.pupitreLeader.create({
+          data: { bandId: a.bandId, membershipId: a.musicianId, pupitreId: b.pupitreId },
+        }),
+        "P2003",
+        "PupitreLeader_pupitreId_bandId_fkey",
+      );
+    });
+  });
+
   describe("band scoping is enforced by the database, not just by callers", () => {
     it("rejects an instrument pairing a membership with another band's pupitre", async () => {
       await expectRejectedByDatabase(

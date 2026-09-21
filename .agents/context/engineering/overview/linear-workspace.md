@@ -48,6 +48,8 @@ A ticket that turns out to be blocked stays `In Progress` only if it is genuinel
 - **`In Review`** — on pull-request open, within seconds of it.
 - **`Done`** — on merge into `dev`, which is also the staging deploy. So `Done` here means **deployed to staging**, not merely merged, and not "shipped to users" — there is no production branch yet (see [infra-and-envs.md](infra-and-envs.md)).
 
+**A `Refs BAT-nn` in a commit message hands that ticket to the automation too.** Not just the one being worked: every issue a merged PR's commits mention gets attached and moved. BAT-42 landed in `In Review` the second PR #20 merged, with no line of its code written, because commits referencing the ticket for context said `Refs BAT-38, BAT-42`. Reference another ticket in a commit only when the commit genuinely advances it; to point at one for context, name it in the body prose instead of the trailer. When it happens anyway, move the ticket back — that is correcting your own side effect, not overriding the automation.
+
 **Never report a state from memory of your own last write** — re-read the issue. This is the practical consequence of the automation moving tickets underneath you: BAT-38 sat in `In Review` for a whole working session while being described as `In Progress`, because its last known state was the one an agent had written rather than the one the automation had since applied.
 
 ## Conventions when creating issues

@@ -2,7 +2,7 @@
 title: Data model implementation (packages/db)
 summary: How the Linear data-model document is translated into Prisma — naming, uuid(7) ids, where constraints live, and what the schema deliberately does not enforce
 category: engineering
-last_updated: 2026-09-20
+last_updated: 2026-09-21
 related:
   - engineering/overview/conventions.md
   - product/data-modeling-convention.md
@@ -18,7 +18,7 @@ related:
 
 The canonical description of *what* is modeled lives in the Linear project document ["Data model — v0 CORE (Layer 1 + Layer 2)"](https://linear.app/cyc-personal/document/data-model-v0-core-layer-1-layer-2-9f90bb8097c7), and the process for evolving it is [data-modeling-convention.md](../../product/data-modeling-convention.md). This document covers only the other half: how that model is expressed in `packages/db/prisma/schema.prisma`, and which invariants the database does and does not enforce.
 
-Layer 1 (`User`, `Band`, `Membership`, `GroupRole`, `Pupitre`, `MemberInstrument`, `InviteCode`) landed with [BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres) as the repo's first real schema, across three migrations on top of the `HelloWorld` bootstrap placeholder. How migrations themselves are written and validated is [database-migrations.md](database-migrations.md).
+Layer 1 (`User`, `Band`, `Membership`, `GroupRole`, `PupitreLeader`, `Pupitre`, `MemberInstrument`, `InviteCode`) landed with [BAT-38](https://linear.app/cyc-personal/issue/BAT-38/data-model-layer-1-identity-bands-memberships-pupitres) as the repo's first real schema, across three migrations on top of the `HelloWorld` bootstrap placeholder. How migrations themselves are written and validated is [database-migrations.md](database-migrations.md).
 
 ## Schema conventions
 
@@ -86,15 +86,33 @@ db.memberInstrument.update({
 
 `bandId` is left alone and the write succeeds. Worth knowing before [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) implements validation withdrawal; `db.test.ts` locks the supported path in.
 
+## Roles sit at two different scopes
+
+`GroupRole` (`conductor | relay`) is held across a whole band and hangs off a `Membership` alone. `PupitreLeader` — the *chef de pupitre* / référent — is held over **one section**, so it references a `Pupitre` as well. Adding a `section_leader` value to `GroupRoleType` would have modeled it wrongly: the enum has nowhere to put the pupitre.
+
+Both keep free cardinality, as [role-hierarchy.md](../../domain/role-hierarchy.md) requires: a pupitre may have no leader, one, or several, and a member may lead several pupitres. The uniques bound duplication only — never shape.
+
+`PupitreLeader` carries no `type` enum. Exactly one pupitre-scoped role exists, and a single-valued enum would be structure invented ahead of a shape nobody has settled. If a second one ever appears, that is when its shape will be known.
+
+Worth keeping straight, because the words collide in everyday band language: `MemberInstrument.tier`'s `referent` value is a level of **autonomy on an instrument**, not authority over a section. A member can hold the tier without leading the pupitre, and lead it without holding the tier.
+
+### Who may validate a MemberInstrument
+
+Settled on BAT-47, in the [data-model document](https://linear.app/cyc-personal/document/data-model-v0-core-layer-1-layer-2-9f90bb8097c7), which is the source of truth for this: **a validator must hold a `GroupRole` in the band (`conductor` or `relay`), or lead that instrument's pupitre.** Derived from roles, not from band membership.
+
+`relay` counts, and that is not an oversight to tidy up later: [role-hierarchy.md](../../domain/role-hierarchy.md) describes bands that run on relay authority with no conductor at all, and those bands would otherwise be unable to validate anything.
+
+`PupitreLeader` is what made the rule expressible — before it, the model had no way to ask whether someone led a section. It still isn't a database constraint: it is a disjunction across `GroupRole` and `PupitreLeader`, conditional on `validated`, which no key or CHECK carries. It belongs to [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api)'s handler.
+
+**Self-validation needs no separate rule — it falls out of this one**, and that supersedes the "not yourself" conclusion reached earlier on BAT-38. A member with no authority cannot validate anyone, themselves included. A member who *does* hold authority over that pupitre can sign off their own declaration, which is the right outcome rather than a loophole: it is exactly the sole-playing-conductor case that made a blanket `validatedById <> membershipId` constraint unworkable in the first place.
+
 ## What the schema deliberately does not enforce
 
-- **Self-validation.** Nothing stops `MemberInstrument.validatedById` from equalling its own `membershipId` — the composite key constrains the validator to the same *band*, and no CHECK compares the two columns (verified against a live database). A member can therefore sign off their own declaration, which defeats the point of the field: it exists to record that someone with authority validated it (see [role-hierarchy.md](../../domain/role-hierarchy.md)).
+- **Validation authority.** Nothing stops `MemberInstrument.validatedById` from being any membership in the band — the composite key constrains the validator to the same *band* and nothing more (verified against a live database). Whether that member may actually validate is the rule above, and it lives in the handler.
 
-  **This is the handler's job, deliberately, and not the database's yet.** A blanket `CHECK ("validatedById" IS NULL OR "validatedById" <> "membershipId")` was weighed and rejected on BAT-38: in a band whose only conductor also plays, it leaves that member's own instrument permanently unvalidatable, which is the same class of assumption [role-hierarchy.md](../../domain/role-hierarchy.md) rules out when it says no model may assume every band has a conductor. The asymmetry also runs the other way from how it first looks — relaxing a constraint later is a migration against a table with rows, while adding one later is a migration against contents you already know. Revisit it with [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent): once *who may validate* is modeled, "not yourself" stops being a standalone rule and becomes a special case of an authority check the handler already performs.
+  A blanket `CHECK ("validatedById" IS NULL OR "validatedById" <> "membershipId")` was weighed and rejected on BAT-38, and BAT-47 then removed the reason to want one at all: with authority modeled, self-validation by an authority-holder is correct behaviour rather than a hole. The constraint would have left a band whose only authority-holder is the declarer permanently stuck.
 
-  **The check [BAT-42](https://linear.app/cyc-personal/issue/BAT-42/band-membership-and-roster-api) needs is conditional, not a bare column comparison:** reject only when `validated` is true *and* `validatedById === membershipId`. A member editing their own declaration while it is still unvalidated is not self-validating, and a rule written against `validatedById` alone blocks a legitimate action.
-
-- **Section leader has no role in the model at all.** `GroupRole` is `conductor | relay`, and that is correct: those are *group* roles, held across the band, whereas a section leader (*référent*) leads one pupitre and so is a pupitre-scoped role — a different shape that `GroupRole` has nowhere to put. Not modeled yet, and [BAT-45](https://linear.app/cyc-personal/issue/BAT-45/section-leader-selection-step-available-selected) already assumes it exists ("scoped to the sections the current member leads"). Tracked as [BAT-47](https://linear.app/cyc-personal/issue/BAT-47/data-model-role-de-pupitre-chef-de-pupitre-referent) in v0 CORE, blocking BAT-45.
+  Worth keeping from that discussion anyway, since it generalises: relaxing a constraint later is a migration against a table with rows, while adding one later is a migration against contents you already know. The cheap direction is to wait.
 
 ## The bootstrap placeholder was removed forward, not erased
 
@@ -104,6 +122,6 @@ BAT-38 dropped `HelloWorld` with a migration that drops the table, leaving `2026
 
 `check:schema` and `check:migrations` are the two gates, both run in CI against ephemeral Neon branches — see [quality-gates.md](../overview/quality-gates.md) and [infra-and-envs.md](../overview/infra-and-envs.md). Locally, `check:schema` only needs a `SHADOW_DATABASE_URL` pointing at a structurally empty database; it replays the whole migration directory into it and diffs the result against `schema.prisma`.
 
-`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`), followed by writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, and a duplicate pupitre name. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
+`apps/api/src/db.test.ts` complements those: a round trip through the real generated client (band → membership → member instrument → pupitre, plus both of `MemberInstrument`'s relations to `Membership`, and the pupitres a member leads), followed by writes that *should* be refused — a membership paired with another band's pupitre, a pupitre paired with another band's membership, a foreign validator, and a duplicate pupitre name. It replaces the placeholder round trip the `hello` handler used to do, and it is the reason `apps/api` still depends on `@batuto/db` before the first real API procedures land.
 
 Run it through turbo (`yarn turbo run test`), not `yarn workspace @batuto/api test`: `apps/api` imports `@batuto/db`'s built `dist/`, so a direct invocation happily tests a stale client against a freshly migrated database and reports failures that do not exist.

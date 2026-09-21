@@ -87,6 +87,7 @@ model Membership {
   band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
 
   groupRoles                 GroupRole[]
+  pupitresLed                PupitreLeader[]
   memberInstruments          MemberInstrument[] @relation("MemberInstrumentMember")
   validatedMemberInstruments MemberInstrument[] @relation("MemberInstrumentValidator")
 
@@ -120,9 +121,42 @@ model Pupitre {
   band Band @relation(fields: [bandId], references: [id], onDelete: Cascade)
 
   memberInstruments MemberInstrument[]
+  leaders           PupitreLeader[]
 
   @@unique([bandId, name])
   @@unique([id, bandId])
+}
+
+/// A member who leads one pupitre — the *chef de pupitre* / référent. Scoped to
+/// a single section, which is what separates it from GroupRole: conductor and
+/// relay are held across the whole band, and have nowhere to put a pupitre
+/// reference. Adding a value to GroupRoleType would model this wrongly.
+///
+/// Not to be confused with MemberInstrument's `referent` tier, which is a level
+/// of autonomy on an instrument rather than authority over a section. The two
+/// words overlap in everyday band language and mean different things here —
+/// see .agents/context/domain/role-hierarchy.md.
+///
+/// Cardinality is free, as for group roles: a pupitre may have no leader, one,
+/// or several, and a member may lead several pupitres. Nothing may assume a
+/// fixed shape. The unique below bounds duplication only.
+///
+/// Deliberately has no `type` enum. Exactly one pupitre-scoped role exists
+/// today, and a single-valued enum would be structure invented ahead of a
+/// shape nobody has settled.
+model PupitreLeader {
+  id           String   @id @default(uuid(7))
+  bandId       String
+  membershipId String
+  pupitreId    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  membership Membership @relation(fields: [membershipId, bandId], references: [id, bandId], onDelete: Cascade)
+  pupitre    Pupitre    @relation(fields: [pupitreId, bandId], references: [id, bandId], onDelete: Cascade)
+
+  @@unique([membershipId, pupitreId])
+  @@index([pupitreId])
 }
 
 /// An instrument/section a member plays, at a given autonomy tier. Carries two
